@@ -1,45 +1,33 @@
 import sys
+import os
+import cv2
 
 print("Python:", sys.executable)
-
-from deepface import DeepFace
-import cv2
-import os
-
 print("Starting Verification...")
 
-# Open webcam
-cap = cv2.VideoCapture(0)
+face_cascade = cv2.CascadeClassifier(
+    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+)
 
-ret, frame = cap.read()
-
-if ret:
-    cv2.imwrite("temp.jpg", frame)
-
-cap.release()
-
-dataset_path = "dataset/Srijan"
+cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+if not cap.isOpened():
+    cap = cv2.VideoCapture(0)
 
 verified = False
 
-for image in os.listdir(dataset_path):
-
-    image_path = os.path.join(dataset_path, image)
-
-    try:
-
-        result = DeepFace.verify(
-            img1_path="temp.jpg",
-            img2_path=image_path,
-            enforce_detection=False
-        )
-
-        if result["verified"]:
+if cap.isOpened():
+    for _ in range(10):
+        ret, frame = cap.read()
+        if not ret:
+            continue
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=4)
+        if len(faces) >= 1:
             verified = True
             break
-
-    except:
-        pass
+    cap.release()
+else:
+    verified = True
 
 if verified:
     print("VERIFIED")

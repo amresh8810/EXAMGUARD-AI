@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Admin dashboard | ExamGuard AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="admin-page">
+    <div class="admin-shell">
+        <aside class="sidebar">
+            <a class="brand" href="{{ url_for('admin') }}">
+                <span class="brand-mark" aria-hidden="true">E</span>
+                <span>ExamGuard <strong>AI</strong></span>
+            </a>
+            <p class="sidebar-label">WORKSPACE</p>
+            <nav class="sidebar-nav" aria-label="Admin navigation">
+                <a class="nav-link active" href="#overview">Overview</a>
+                <a class="nav-link" href="#reports">Exam reports</a>
+                <a class="nav-link" href="{{ url_for('admin_reports') }}">Report review</a>
+                <a class="nav-link" href="{{ url_for('cloud_exams.admin_index') }}">Cloud exams</a>
+                <a class="nav-link" href="#questions">Questions</a>
+                <a class="nav-link" href="{{ url_for('evidence') }}">Evidence</a>
+            </nav>
+            <div class="sidebar-footer">
+                <span>Workspace access</span>
+                <strong>Administrator</strong>
+            </div>
+        </aside>
+
+        <main class="main-content" id="overview">
+            <header class="topbar">
+                <div>
+                    <p class="eyebrow">EXAMGUARD AI / ADMIN</p>
+                    <h1>Overview</h1>
+                </div>
+                <div class="account-actions">
+                    <span class="admin-identity">
+                        <span class="avatar" aria-hidden="true">{{ admin_username[:1]|upper }}</span>
+                        <span>{{ admin_username }}</span>
+                    </span>
+                    <form method="post" action="{{ url_for('admin_logout') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button class="button button-secondary" type="submit">Sign out</button>
+                    </form>
+                </div>
+            </header>
+
+            <section class="welcome-row">
+                <div>
+                    <h2>Monitoring at a glance</h2>
+                    <p>Review exam activity, candidate reports, and flagged sessions.</p>
+                </div>
+                <a class="button button-primary" href="#questions">Manage questions</a>
+            </section>
+
+            <section class="metric-grid" aria-label="Exam statistics">
+                <article class="metric-card">
+                    <span class="metric-label">Exam reports</span>
+                    <strong class="metric-value">{{ reports|length }}</strong>
+                    <span class="metric-note">Completed sessions</span>
+                </article>
+                <article class="metric-card">
+                    <span class="metric-label">Recorded violations</span>
+                    <strong class="metric-value">{{ violations_total }}</strong>
+                    <span class="metric-note">Across saved reports</span>
+                </article>
+                <article class="metric-card">
+                    <span class="metric-label">High-risk sessions</span>
+                    <strong class="metric-value">{{ high_risk_reports }}</strong>
+                    <span class="metric-note">More than 4 violations</span>
+                </article>
+                <article class="metric-card">
+                    <span class="metric-label">Exam questions</span>
+                    <strong class="metric-value">{{ questions|length }}</strong>
+                    <span class="metric-note">Available in the question bank</span>
+                </article>
+            </section>
+
+            <section class="analytics-grid" aria-label="Exam analytics">
+                <article class="panel">
+                    <div class="section-heading">
+                        <div>
+                            <h2>Violations by report</h2>
+                            <p>Recorded violations for each completed session</p>
+                        </div>
+                    </div>
+                    {% if reports %}
+                    <div class="chart-container">
+                        <canvas id="violationChart" role="img" aria-label="Bar chart of violations by exam report"></canvas>
+                    </div>
+                    {% else %}
+                    <p class="empty-state">No reports yet. Completed exams will appear here.</p>
+                    {% endif %}
+                </article>
+
+                <article class="panel">
+                    <div class="section-heading">
+                        <div>
+                            <h2>Session risk</h2>
+                            <p>Based on recorded violation counts</p>
+                        </div>
+                    </div>
+                    {% if reports %}
+                    <div class="chart-container chart-container-small">
+                        <canvas id="riskChart" role="img" aria-label="Doughnut chart showing session risk distribution"></canvas>
+                    </div>
+                    <div class="risk-legend">
+                        <span><i class="risk-low"></i> Low <strong>{{ low_risk_reports }}</strong></span>
+                        <span><i class="risk-medium"></i> Medium <strong>{{ medium_risk_reports }}</strong></span>
+                        <span><i class="risk-high"></i> High <strong>{{ high_risk_reports }}</strong></span>
+                    </div>
+                    {% else %}
+                    <p class="empty-state">Risk distribution appears after the first exam report.</p>
+                    {% endif %}
+                </article>
+            </section>
+
+            <section class="panel" id="reports">
+                <div class="section-heading section-heading-wrap">
+                    <div>
+                        <h2>Exam reports</h2>
+                        <p>Search and review completed candidate sessions</p>
+                    </div>
+                    <label class="search-field">
+                        <span class="sr-only">Search candidate reports</span>
+                        <input type="search" id="searchInput" placeholder="Search candidates" oninput="searchReports()">
+                    </label>
+                </div>
+                <div class="table-wrap">
+                    <table id="reportTable">
+                        <thead>
+                            <tr>
+                                <th scope="col">Candidate</th>
+                                <th scope="col">Last face count</th>
+                                <th scope="col">Violations</th>
+                                <th scope="col">Risk</th>
+                                <th scope="col">Evidence</th>
+                                <th scope="col">Completed</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for report in reports %}
+                            <tr>
+                                <td class="candidate-cell">{{ report[1] or "Candidate" }}</td>
+                                <td>{{ report[2] or 0 }}</td>
+                                <td>{{ report[3] or 0 }}</td>
+                                <td>
+                                    {% if (report[3] or 0) <= 1 %}
+                                    <span class="risk-badge risk-badge-low">Low</span>
+                                    {% elif (report[3] or 0) <= 4 %}
+                                    <span class="risk-badge risk-badge-medium">Medium</span>
+                                    {% else %}
+                                    <span class="risk-badge risk-badge-high">High</span>
+                                    {% endif %}
+                                </td>
+                                <td><a class="table-link" href="{{ url_for('evidence') }}">View {{ report[4] or 0 }}</a></td>
+                                <td>{{ report[5] or "—" }}</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="6" class="empty-table">No exam reports are available yet.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="panel question-panel" id="questions">
+                <div class="section-heading">
+                    <div>
+                        <h2>Question bank</h2>
+                        <p>Add questions or review the existing exam content.</p>
+                    </div>
+                    <span class="count-pill">{{ questions|length }} questions</span>
+                </div>
+
+                <form class="question-form" action="{{ url_for('api_add_question') }}" method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="form-field form-field-wide">
+                        <label for="question">Question</label>
+                        <input id="question" type="text" name="question" placeholder="Enter the question" required>
+                    </div>
+                    <div class="form-field">
+                        <label for="option-a">Option A</label>
+                        <input id="option-a" type="text" name="option_a" required>
+                    </div>
+                    <div class="form-field">
+                        <label for="option-b">Option B</label>
+                        <input id="option-b" type="text" name="option_b" required>
+                    </div>
+                    <div class="form-field">
+                        <label for="option-c">Option C</label>
+                        <input id="option-c" type="text" name="option_c" required>
+                    </div>
+                    <div class="form-field">
+                        <label for="option-d">Option D</label>
+                        <input id="option-d" type="text" name="option_d" required>
+                    </div>
+                    <div class="form-field">
+                        <label for="correct">Correct answer</label>
+                        <select id="correct" name="correct">
+                            <option value="0">Option A</option>
+                            <option value="1">Option B</option>
+                            <option value="2">Option C</option>
+                            <option value="3">Option D</option>
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button class="button button-primary" type="submit">Add question</button>
+                    </div>
+                </form>
+
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th scope="col">Question</th>
+                                <th scope="col">Options</th>
+                                <th scope="col">Correct answer</th>
+                                <th scope="col">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for question in questions %}
+                            <tr>
+                                <td class="candidate-cell">{{ question.question }}</td>
+                                <td class="options-cell">
+                                    A. {{ question.options[0] }}<br>
+                                    B. {{ question.options[1] }}<br>
+                                    C. {{ question.options[2] }}<br>
+                                    D. {{ question.options[3] }}
+                                </td>
+                                <td>{{ ["A", "B", "C", "D"][question.correct] }}. {{ question.options[question.correct] }}</td>
+                                <td>
+                                    <form action="{{ url_for('api_delete_question', qid=question.id) }}" method="post" onsubmit="return confirm('Delete this question?');">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <button class="button button-danger" type="submit">Delete</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="4" class="empty-table">No questions found in the question bank.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <footer class="page-footer">ExamGuard AI · Administrator workspace</footer>
+        </main>
+    </div>
+
+    <script>
+        function searchReports() {
+            const query = document.getElementById("searchInput").value.trim().toLowerCase();
+            document.querySelectorAll("#reportTable tbody tr").forEach((row) => {
+                const candidate = row.querySelector(".candidate-cell");
+                row.hidden = Boolean(candidate) && !candidate.textContent.toLowerCase().includes(query);
+            });
+        }
+
+        {% if reports %}
+        const chartLabels = {{ chart_labels|tojson }};
+        const violationData = {{ chart_values|tojson }};
+        const chartText = "#334155";
+        const chartGrid = "#e8edf4";
+
+        new Chart(document.getElementById("violationChart"), {
+            type: "bar",
+            data: {
+                labels: chartLabels,
+                datasets: [{
+                    label: "Violations",
+                    data: violationData,
+                    backgroundColor: "#5578e8",
+                    borderRadius: 6,
+                    maxBarThickness: 36
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: chartText }, grid: { display: false } },
+                    y: { beginAtZero: true, ticks: { precision: 0, color: chartText }, grid: { color: chartGrid } }
+                }
+            }
+        });
+
+        new Chart(document.getElementById("riskChart"), {
+            type: "doughnut",
+            data: {
+                labels: ["Low risk", "Medium risk", "High risk"],
+                datasets: [{
+                    data: [{{ low_risk_reports }}, {{ medium_risk_reports }}, {{ high_risk_reports }}],
+                    backgroundColor: ["#1b9a72", "#e5a52b", "#d64b52"],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: "70%",
+                plugins: { legend: { display: false } }
+            }
+        });
+        {% endif %}
+    </script>
+</body>
+</html>

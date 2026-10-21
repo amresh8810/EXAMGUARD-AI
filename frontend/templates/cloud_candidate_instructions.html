@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Camera check | ExamGuard AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloud-exams.css') }}">
+</head>
+<body class="cloud-candidate-page">
+    <main class="candidate-shell candidate-shell-wide">
+        <a class="candidate-brand" href="{{ url_for('cloud_exams.candidate_login', exam_id=exam_id) }}"><span aria-hidden="true">E</span> ExamGuard <strong>AI</strong></a>
+        <section class="candidate-card readiness-card">
+            <p class="candidate-eyebrow">BEFORE YOU START</p>
+            <h1>Camera readiness</h1>
+            <p class="candidate-intro">Welcome, {{ candidate_name }}. Allow camera access and keep one face clearly visible. The check confirms face presence only; it does not compare your face to an enrolled identity.</p>
+            {% if attempts_remaining < attempt_limit %}
+            <p class="cloud-status-message">Starting attempt {{ next_attempt_number }} of {{ attempt_limit }}. {{ attempts_remaining }} attempt{{ "" if attempts_remaining == 1 else "s" }} remaining.</p>
+            {% endif %}
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <div class="cloud-alert-stack" aria-live="polite">
+                {% for category, message in messages %}
+                <p class="cloud-alert cloud-alert-{{ category }}">{{ message }}</p>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% endwith %}
+            <div class="camera-readiness-layout">
+                <div class="camera-preview-wrap">
+                    <video id="cloudCameraPreview" autoplay playsinline muted aria-label="Live candidate camera preview"></video>
+                    <div class="camera-preview-placeholder" id="cameraPlaceholder">Camera preview will appear after permission is granted.</div>
+                </div>
+                <div class="camera-check-copy">
+                    <h2>Required check</h2>
+                    <ul>
+                        <li>Camera is available in this browser</li>
+                        <li>Exactly one face is visible</li>
+                        <li>Stable internet connection for saving answers</li>
+                    </ul>
+                    <p id="readinessStatus" class="cloud-status-message" role="status" aria-live="polite">Starting camera check…</p>
+                    <button id="startCloudCamera" class="candidate-secondary-button" type="button">Allow camera</button>
+                    <button id="startCloudExam" class="candidate-primary-button" type="button" disabled>Start attempt {{ next_attempt_number }}</button>
+                    <a class="candidate-back-link" href="{{ url_for('cloud_exams.candidate_login', exam_id=exam_id) }}">Back to exam access</a>
+                </div>
+            </div>
+        </section>
+    </main>
+    <script id="cloudReadinessConfig" type="application/json">{{ {"exam_id": exam_id, "csrf_token": csrf_token, "readiness_url": url_for("cloud_exams.candidate_readiness", exam_id=exam_id), "start_url": url_for("cloud_exams.candidate_start", exam_id=exam_id)}|tojson }}</script>
+    <script src="{{ url_for('static', filename='js/cloud-candidate.js') }}" defer></script>
+</body>
+</html>

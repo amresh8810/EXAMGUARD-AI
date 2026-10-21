@@ -39,6 +39,16 @@ document.querySelector("form").addEventListener("submit", async (e) => {
 
     e.preventDefault();
 
+    const nameInput = document.getElementById("candidateName");
+    const regInput = document.getElementById("regNumber");
+    const name = nameInput ? nameInput.value.trim() : "";
+    const regNo = regInput ? regInput.value.trim() : "";
+
+    if (!name || !regNo) {
+        alert("Please enter both Full Name and Registration Number.");
+        return;
+    }
+
     const loginBtn =
     document.querySelector("button[type='submit']");
 
@@ -50,7 +60,16 @@ document.querySelector("form").addEventListener("submit", async (e) => {
     try{
 
         const response =
-        await fetch("/verify");
+        await fetch("/verify", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                name: name,
+                reg_no: regNo
+            })
+        });
 
         const data =
         await response.json();
@@ -58,7 +77,7 @@ document.querySelector("form").addEventListener("submit", async (e) => {
         if(data.status === "success"){
 
             alert(
-                "Candidate Verified Successfully!"
+                data.message || "Candidate Verified Successfully!"
             );
 
             window.location.href =
@@ -67,11 +86,11 @@ document.querySelector("form").addEventListener("submit", async (e) => {
         }else{
 
             alert(
-                "Face Verification Failed!\nAccess Denied."
+                data.message || "Face Verification Failed!\nAccess Denied."
             );
 
             loginBtn.innerHTML =
-            "Login";
+            "Verify Identity";
 
             loginBtn.disabled = false;
         }
@@ -83,11 +102,11 @@ document.querySelector("form").addEventListener("submit", async (e) => {
         console.log(error);
 
         alert(
-            "Verification Server Error"
+            "Verification Server Error: " + error.message
         );
 
         loginBtn.innerHTML =
-        "Login";
+        "Verify Identity";
 
         loginBtn.disabled = false;
     }

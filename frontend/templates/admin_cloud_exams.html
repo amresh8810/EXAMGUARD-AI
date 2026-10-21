@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cloud exams | ExamGuard AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloud-exams.css') }}">
+</head>
+<body class="admin-page">
+    <div class="admin-shell">
+        <aside class="sidebar">
+            <a class="brand" href="{{ url_for('admin') }}">
+                <span class="brand-mark" aria-hidden="true">E</span>
+                <span>ExamGuard <strong>AI</strong></span>
+            </a>
+            <p class="sidebar-label">WORKSPACE</p>
+            <nav class="sidebar-nav" aria-label="Admin navigation">
+                <a class="nav-link" href="{{ url_for('admin') }}">Overview</a>
+                <a class="nav-link" href="{{ url_for('admin_reports') }}">Report review</a>
+                <a class="nav-link active" href="{{ url_for('cloud_exams.admin_index') }}" aria-current="page">Cloud exams</a>
+            </nav>
+            <div class="sidebar-footer">
+                <span>Workspace access</span>
+                <strong>Administrator</strong>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <header class="topbar">
+                <div>
+                    <p class="eyebrow">EXAMGUARD AI / CLOUD WORKSPACE</p>
+                    <h1>Cloud exams</h1>
+                </div>
+                <div class="account-actions">
+                    <span class="admin-identity">
+                        <span class="avatar" aria-hidden="true">{{ admin_username[:1]|upper }}</span>
+                        <span>{{ admin_username }}</span>
+                    </span>
+                    <form method="post" action="{{ url_for('admin_logout') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button class="button button-secondary" type="submit">Sign out</button>
+                    </form>
+                </div>
+            </header>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <div class="cloud-alert-stack" aria-live="polite">
+                {% for category, message in messages %}
+                <p class="cloud-alert cloud-alert-{{ category }}">{{ message }}</p>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% endwith %}
+
+            {% if setup_error %}
+            <section class="cloud-alert cloud-alert-error" role="alert">
+                <strong>Cloud setup needs attention</strong>
+                <span>{{ setup_error }}</span>
+                <small>Cloud exam routes are isolated; local SQLite exams are still available from Overview.</small>
+            </section>
+            {% endif %}
+
+            <section class="welcome-row cloud-welcome">
+                <div>
+                    <h2>Separate exam workspace</h2>
+                    <p>Cloud attempts are isolated from the existing local exam records.</p>
+                </div>
+                <span class="cloud-capacity-note">Capacity is not yet load-tested</span>
+            </section>
+
+            <section class="panel cloud-create-panel" aria-labelledby="create-title">
+                <div class="section-heading">
+                    <div>
+                        <h2 id="create-title">Create an exam</h2>
+                        <p>Choose questions from the current bank; an exam keeps its own answer-key snapshot.</p>
+                    </div>
+                </div>
+                <form id="cloudExamCreateForm" class="cloud-form-grid" method="post" action="{{ url_for('cloud_exams.create_exam') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="form-field field-wide">
+                        <label for="cloud-title">Exam name</label>
+                        <input id="cloud-title" name="title" maxlength="160" required autocomplete="off" placeholder="For example, Network Fundamentals — October">
+                    </div>
+                    <div class="form-field">
+                        <label for="cloud-opens-local">Opens at <span>(your browser's local time)</span></label>
+                        <input id="cloud-opens-local" name="opens_at_local" type="datetime-local" required>
+                        <input id="cloud-opens-utc" name="opens_at_utc" type="hidden">
+                    </div>
+                    <div class="form-field">
+                        <label for="cloud-closes-local">Closes at <span>(your browser's local time)</span></label>
+                        <input id="cloud-closes-local" name="closes_at_local" type="datetime-local" required>
+                        <input id="cloud-closes-utc" name="closes_at_utc" type="hidden">
+                    </div>
+                    <div class="form-field">
+                        <label for="cloud-duration">Attempt duration (minutes)</label>
+                        <input id="cloud-duration" name="duration_minutes" type="number" min="1" max="480" value="60" required>
+                    </div>
+                    <div class="form-field">
+                        <label for="cloud-attempt-limit">Attempts allowed</label>
+                        <input id="cloud-attempt-limit" name="attempt_limit" type="number" min="1" max="20" value="1" required>
+                    </div>
+                    <div class="form-field">
+                        <label for="cloud-pass-marks">Pass mark (percent)</label>
+                        <input id="cloud-pass-marks" name="pass_marks" type="number" min="0" max="100" value="40" required>
+                    </div>
+                    <label class="cloud-checkbox-card">
+                        <input type="checkbox" name="randomize_questions">
+                        <span>
+                            <strong>Randomize question order</strong>
+                            <small>Each candidate receives an independently shuffled question snapshot.</small>
+                        </span>
+                    </label>
+
+                    <fieldset class="question-picker field-wide">
+                        <legend>Questions for this exam</legend>
+                        {% if questions %}
+                        <div class="question-picker-list">
+                            {% for question in questions %}
+                            <label class="question-picker-item">
+                                <input type="checkbox" name="question_ids" value="{{ question.id }}">
+                                <span>
+                                    <strong>{{ question.question }}</strong>
+                                    <small>{{ question.options|length }} answer choices</small>
+                                </span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <p class="empty-state">No questions are available. Add questions in the existing admin Overview first.</p>
+                        {% endif %}
+                    </fieldset>
+                    <div class="field-wide cloud-form-actions">
+                        <button class="button button-primary" type="submit" {% if not questions or setup_error %}disabled{% endif %}>Create draft exam</button>
+                        <span>Drafts do not accept attempts. Add the candidate roster before opening.</span>
+                    </div>
+                </form>
+            </section>
+
+            <section class="panel" aria-labelledby="exam-list-title">
+                <div class="section-heading">
+                    <div>
+                        <h2 id="exam-list-title">Exam workspace</h2>
+                        <p>Manage schedules, rosters, attempts and publication for cloud exams.</p>
+                    </div>
+                    <span class="count-pill">{{ exams|length }} exams</span>
+                </div>
+                {% if exams %}
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th scope="col">Exam</th>
+                                <th scope="col">Status</th>
+                                <th scope="col">Candidates</th>
+                                <th scope="col">Attempts</th>
+                                <th scope="col">Schedule</th>
+                                <th scope="col">Results</th>
+                                <th scope="col">Manage</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for exam in exams %}
+                            <tr>
+                                <td class="candidate-cell">{{ exam.title }}</td>
+                                <td><span class="cloud-status cloud-status-{{ exam.status }}">{{ exam.status|replace('_', ' ')|title }}</span></td>
+                                <td>{{ exam.candidate_count }}</td>
+                                <td>{{ exam.submitted_count }} / {{ exam.attempt_count }}</td>
+                                <td>{{ exam.opens_at }}<br><span class="muted-line">to {{ exam.closes_at }}</span></td>
+                                <td>{{ "Published" if exam.results_published_at else "Not published" }}</td>
+                                <td><a class="table-link" href="{{ url_for('cloud_exams.admin_detail', exam_id=exam.id) }}">Open exam</a></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="empty-state">No cloud exams yet. Create a draft above to get started.</p>
+                {% endif %}
+            </section>
+            <footer class="page-footer">Cloud exams · Supabase-backed workspace · Existing local exam records are separate</footer>
+        </main>
+    </div>
+    <script src="{{ url_for('static', filename='js/cloud-admin.js') }}" defer></script>
+</body>
+</html>

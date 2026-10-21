@@ -1,0 +1,139 @@
+.report-review-intro { align-items: flex-start; }
+.report-filter-form {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(150px, 1fr));
+    gap: 14px;
+    align-items: end;
+}
+.report-filter-form .form-field input,
+.report-filter-form .form-field select {
+    min-height: 44px;
+}
+.report-filter-actions,
+.report-export-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.report-filter-actions .button,
+.report-export-actions .button,
+.event-review-form .button { min-height: 44px; }
+.report-filter-actions { grid-column: 1 / -1; }
+.report-export-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+.result-count { margin: 0; color: #43516a; font-size: 13px; font-weight: 650; }
+.report-exam-id {
+    max-width: 190px;
+    overflow-wrap: anywhere;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 12px;
+}
+.muted-detail {
+    display: block;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 400;
+}
+.report-actions-cell { min-width: 115px; }
+.report-actions-cell .table-link { display: inline-block; margin: 0 8px 4px 0; }
+.event-filter-form { grid-template-columns: repeat(3, minmax(150px, 1fr)); }
+.event-filter-form .report-filter-actions { grid-column: auto; }
+.review-event-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin-top: 18px;
+}
+.review-event-card {
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: #fff;
+}
+.review-event-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+.review-event-heading h3 { margin: 0; color: var(--ink); font-size: 16px; }
+.review-event-heading p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.review-event-heading .event-id { overflow-wrap: anywhere; font-family: Consolas, "Courier New", monospace; }
+.review-status {
+    flex: 0 0 auto;
+    padding: 4px 9px;
+    border-radius: 999px;
+    color: #475569;
+    background: #eef2f7;
+    font-size: 11px;
+    font-weight: 700;
+}
+.review-status-valid_alert { color: #167451; background: #e5f6ef; }
+.review-status-false_positive { color: #8a4b08; background: #fff1d8; }
+.review-status-needs_follow_up { color: #8b3b21; background: #ffede7; }
+.review-status-unreviewed { color: #344e9b; background: #e9eeff; }
+.evidence-image-link {
+    display: block;
+    margin: 14px 0;
+    border-radius: 7px;
+    background: #f1f4f9;
+}
+.evidence-image-link img {
+    display: block;
+    width: 100%;
+    max-height: 360px;
+    aspect-ratio: 4 / 3;
+    border-radius: inherit;
+    object-fit: contain;
+}
+.event-review-form { display: grid; gap: 7px; }
+.event-review-form label { margin-top: 5px; color: #43516a; font-size: 12px; font-weight: 650; }
+.event-review-form select,
+.event-review-form textarea {
+    width: 100%;
+    min-height: 44px;
+    padding: 9px 11px;
+    border: 1px solid #d8e0eb;
+    border-radius: 7px;
+    color: var(--ink);
+    background: #fff;
+    font: inherit;
+}
+.event-review-form textarea { min-height: 80px; resize: vertical; }
+.event-review-form button { justify-self: start; margin-top: 5px; }
+.review-save-message {
+    min-height: 1.5em;
+    margin: 0;
+    color: #167451;
+    font-size: 12px;
+}
+.review-save-message.is-error { color: #a52b35; }
+.review-audit { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
+
+@media (max-width: 1120px) {
+    .report-filter-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .event-filter-form .report-filter-actions { grid-column: 1 / -1; }
+}
+
+@media (max-width: 760px) {
+    .report-filter-form,
+    .event-filter-form,
+    .review-event-grid { grid-template-columns: 1fr; }
+    .report-filter-actions,
+    .event-filter-form .report-filter-actions { grid-column: auto; }
+    .report-export-row { align-items: flex-start; flex-direction: column; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .admin-page *,
+    .admin-page *::before,
+    .admin-page *::after { transition-duration: .01ms !important; }
+}

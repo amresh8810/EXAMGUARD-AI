@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Reports and review | ExamGuard AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/report-review.css') }}">
+</head>
+<body class="admin-page">
+    <div class="admin-shell">
+        <aside class="sidebar">
+            <a class="brand" href="{{ url_for('admin') }}">
+                <span class="brand-mark" aria-hidden="true">E</span>
+                <span>ExamGuard <strong>AI</strong></span>
+            </a>
+            <p class="sidebar-label">WORKSPACE</p>
+            <nav class="sidebar-nav" aria-label="Admin navigation">
+                <a class="nav-link" href="{{ url_for('admin') }}">Overview</a>
+                <a class="nav-link active" href="{{ url_for('admin_reports') }}" aria-current="page">Reports &amp; review</a>
+                <a class="nav-link" href="{{ url_for('admin') }}#questions">Questions</a>
+                <a class="nav-link" href="{{ url_for('evidence') }}">Evidence</a>
+            </nav>
+            <div class="sidebar-footer">
+                <span>Workspace access</span>
+                <strong>Administrator</strong>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <header class="topbar">
+                <div>
+                    <p class="eyebrow">EXAMGUARD AI / ADMIN</p>
+                    <h1>Reports &amp; review</h1>
+                </div>
+                <div class="account-actions">
+                    <span class="admin-identity">
+                        <span class="avatar" aria-hidden="true">{{ admin_username[:1]|upper }}</span>
+                        <span>{{ admin_username }}</span>
+                    </span>
+                    <form method="post" action="{{ url_for('admin_logout') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button class="button button-secondary" type="submit">Sign out</button>
+                    </form>
+                </div>
+            </header>
+
+            <section class="welcome-row report-review-intro">
+                <div>
+                    <h2>Find a report and inspect its flagged events</h2>
+                    <p>Filter completed sessions, export the matching report summary, or manually review captured evidence.</p>
+                </div>
+                <a class="button button-primary" href="{{ url_for('admin_evidence_review') }}">Review evidence queue</a>
+            </section>
+
+            <section class="panel" aria-labelledby="reportFiltersHeading">
+                <div class="section-heading">
+                    <div>
+                        <h2 id="reportFiltersHeading">Report filters</h2>
+                        <p>Choose one or more filters. Exports use the same matching results.</p>
+                    </div>
+                </div>
+                <form class="report-filter-form" method="get" action="{{ url_for('admin_reports') }}">
+                    <div class="form-field">
+                        <label for="candidateFilter">Candidate name</label>
+                        <input id="candidateFilter" name="candidate" value="{{ filters.candidate }}" maxlength="120" autocomplete="off">
+                    </div>
+                    <div class="form-field">
+                        <label for="examFilter">Exam ID</label>
+                        <input id="examFilter" name="exam_id" value="{{ filters.exam_id }}" maxlength="128" autocomplete="off">
+                    </div>
+                    <div class="form-field">
+                        <label for="dateFromFilter">Completed from</label>
+                        <input id="dateFromFilter" type="date" name="date_from" value="{{ filters.date_from }}">
+                    </div>
+                    <div class="form-field">
+                        <label for="dateToFilter">Completed to</label>
+                        <input id="dateToFilter" type="date" name="date_to" value="{{ filters.date_to }}">
+                    </div>
+                    <div class="report-filter-actions">
+                        <button class="button button-primary" type="submit">Apply filters</button>
+                        <a class="button button-secondary" href="{{ url_for('admin_reports') }}">Clear</a>
+                    </div>
+                </form>
+                <div class="report-export-row">
+                    <p class="result-count" role="status">{{ reports|length }} matching report(s)</p>
+                    <div class="report-export-actions">
+                        <a class="button button-secondary" href="{{ url_for('admin_reports_csv', candidate=filters.candidate, exam_id=filters.exam_id, date_from=filters.date_from, date_to=filters.date_to) }}">Export filtered CSV</a>
+                        <a class="button button-secondary" href="{{ url_for('admin_reports_pdf', candidate=filters.candidate, exam_id=filters.exam_id, date_from=filters.date_from, date_to=filters.date_to) }}">Export filtered PDF</a>
+                    </div>
+                </div>
+            </section>
+
+            <section class="panel" aria-labelledby="reportResultsHeading">
+                <div class="section-heading section-heading-wrap">
+                    <div>
+                        <h2 id="reportResultsHeading">Completed exam reports</h2>
+                        <p>Evidence is linked to an exam where the event was recorded by the current review ledger.</p>
+                    </div>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th scope="col">Candidate</th>
+                                <th scope="col">Exam ID</th>
+                                <th scope="col">Completed</th>
+                                <th scope="col">Face count</th>
+                                <th scope="col">Violations</th>
+                                <th scope="col">Evidence</th>
+                                <th scope="col">Review status</th>
+                                <th scope="col">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for report in reports %}
+                            <tr>
+                                <td class="candidate-cell">{{ report.candidate_name or "Candidate" }}</td>
+                                <td class="report-exam-id">{{ report.exam_id or "Unassigned legacy report" }}</td>
+                                <td>{{ report.timestamp or "—" }}</td>
+                                <td>{{ report.face_count or 0 }}</td>
+                                <td>
+                                    <span class="risk-badge {% if (report.violations or 0) > 4 %}risk-badge-high{% elif (report.violations or 0) > 1 %}risk-badge-medium{% else %}risk-badge-low{% endif %}">
+                                        {{ report.violations or 0 }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {{ report.linked_event_count }} linked
+                                    {% if report.evidence_count %}<span class="muted-detail">({{ report.evidence_count }} recorded)</span>{% endif %}
+                                </td>
+                                <td>
+                                    {{ report.unreviewed_count }} unreviewed
+                                    <span class="muted-detail">{{ report.false_positive_count }} false positive(s)</span>
+                                </td>
+                                <td class="report-actions-cell">
+                                    {% if report.exam_id %}
+                                    <a class="table-link" href="{{ url_for('admin_evidence_review', exam_id=report.exam_id) }}">Review events</a>
+                                    {% else %}
+                                    <span class="muted-detail">No event link</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="8" class="empty-table">No reports match these filters.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            <footer class="page-footer">ExamGuard AI · Administrator workspace</footer>
+        </main>
+    </div>
+</body>
+</html>

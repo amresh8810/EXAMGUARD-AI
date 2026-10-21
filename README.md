@@ -6,6 +6,54 @@ ExamGuard AI is an intelligent online examination proctoring system designed to 
 
 The system helps educational institutions and organizations conduct secure online examinations by automatically monitoring candidate behavior and generating evidence whenever suspicious activity is detected.
 
+## Run locally on Windows
+
+Use a virtual environment so the face-recognition dependencies install in a
+short, project-local path:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe frontend\app.py
+```
+
+FaceNet model weights may download the first time an enrolled face is checked.
+
+### Supabase candidate enrollment setup
+
+The `candidate-faces` Storage bucket holds private face images; the
+`candidate_profiles` table stores each candidate's name, registration number,
+and image object path. In the Supabase SQL Editor, run
+[`database/supabase_candidate_profiles.sql`](./database/supabase_candidate_profiles.sql)
+once. Configure `SUPABASE_URL` and a server-side Supabase secret/service-role
+key in the app's `.env`; do not expose that key in browser code. Candidate
+passwords are not collected or stored by this login flow.
+
+### Separate cloud exams for multiple candidates
+
+The admin workspace has an additive **Cloud exams** page at
+`/admin/cloud-exams`. It creates a separate cloud exam snapshot with a schedule,
+duration, attempt limit, passing percentage, optional randomized question
+order, and CSV/XLSX candidate roster. Each candidate receives a high-entropy
+invitation code; only its salted verifier is stored, and the credential CSV is
+downloaded only once after a successful import. Candidates use a separate
+exam-specific access page, browser camera readiness check, cloud autosave, and
+candidate-only published results.
+
+Before using this flow, review
+[`docs/CLOUD_EXAMS.md`](./docs/CLOUD_EXAMS.md), then explicitly apply
+[`database/cloud_exam_schema.sql`](./database/cloud_exam_schema.sql) to the
+intended Supabase project. Cloud setup requires the server-side `SUPABASE_URL`
+and `SUPABASE_SECRET_KEY`; never expose the service-role key in browser code or
+commit it. The schema is separate from local SQLite and does not copy existing
+local candidates or exam records.
+
+The cloud browser check detects face presence/count only; it does not perform
+face identity matching. Use HTTPS for remote camera access. No deployment or
+200+ concurrency guarantee is included: validate the intended hosting setup
+and run realistic concurrent load tests before relying on this flow for a live
+exam.
+
 ---
 
 ## Problem Statement
@@ -44,9 +92,33 @@ Before starting an examination, candidates must complete identity verification.
 
 Features:
 
-- Webcam-based face capture
-- Candidate registration and verification
+- Webcam-based face enrollment on the first successful sign-in for a registration number
+- FaceNet512 comparison against that enrollment on subsequent sign-ins
+- Fresh cloud enrollment when no trusted Supabase candidate profile exists; old
+  local-only face references are replaced instead of treated as trusted
+- Rejection when no face, multiple faces, or a different face is detected
 - Prevention of unauthorized exam access
+
+The first enrollment must be completed using the intended candidate's face.
+Older profile photos are not used as trusted references because earlier versions
+overwrote them on every sign-in. Enrollment images are cached under
+`dataset/face_enrollments/` and synced to the private Supabase `candidate-faces`
+bucket; candidate name, registration number, and image object path are stored
+in `candidate_profiles`. These records should be treated as sensitive personal
+and biometric data.
+Because candidate names and registration numbers are self-entered, this flow
+does not prove ownership of a registration number on its own; production
+deployments should pre-enroll candidates through a trusted administrator.
+
+---
+
+### Pre-Exam Readiness Check
+
+Before the exam can start, candidates can verify their signed-in session,
+question bank, answer-autosave storage, live browser camera, and face detection.
+The start button stays disabled until every check passes. Camera access must be
+allowed in the browser; the readiness camera is released when the exam starts,
+and the timer starts for a new exam or keeps its existing deadline when resuming.
 
 ---
 
@@ -60,6 +132,19 @@ Capabilities:
 - Face detection
 - Candidate presence monitoring
 - Real-time examination supervision
+
+---
+
+### Exam Auto-Save and Recovery
+
+Candidate answers, review flags, and the current question are saved to the local
+SQLite database as the candidate works and periodically in the background. A
+browser-local recovery copy protects recent edits if the connection drops. After
+a browser or login-session timeout, the same candidate can sign in again and
+resume the saved exam. The 60-minute deadline continues while the candidate is
+away; when it expires, the latest available progress is saved and the exam is
+submitted automatically. In-progress and submitted recovery records are retained
+for up to 30 days.
 
 ---
 
@@ -151,6 +236,37 @@ Dashboard Components:
 - AI Monitoring Status
 - Violation Analytics Chart
 - Risk Distribution Chart
+
+---
+
+### Admin Report Filtering and Evidence Review
+
+At `/admin/reports`, administrators can filter completed report summaries by
+candidate name, exam ID, and completion date, then export the matching set as
+CSV or PDF. The evidence review queue is available from that page or at
+`/admin/evidence-review`; admins can mark events as valid alerts, false
+positives, or needing follow-up, add a note, and see who last reviewed them.
+
+New webcam evidence is linked to its exam for review. Existing evidence files
+without saved exam metadata are kept in a separate unassigned historical
+section and are not attributed to a candidate or exam.
+
+---
+
+### Admin Sign-in and Configuration
+
+The admin workspace is available at `/admin/login`. Configure a unique administrator
+username and password in the project-root `.env` file; admin credentials are not
+stored in source code. Generate a persistent Flask session key with:
+
+```powershell
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Set `FLASK_SECRET_KEY`, `ADMIN_USERNAME`, and `ADMIN_PASSWORD` in `.env`, then restart
+the Flask app. Copy the variable names from `.env.example`; do not commit `.env`.
+For HTTPS deployments, set `SESSION_COOKIE_SECURE=true`. Admin reports, evidence,
+question changes, and sign-out require an authenticated admin session.
 
 ---
 
@@ -375,7 +491,7 @@ The project demonstrates the integration of Artificial Intelligence, Computer Vi
 
 ## Author
 
-### Srijan Akshit
+### Amresh Kumar
 
 **ExamGuard AI – AI-Powered Online Examination Proctoring System**
 

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="admin-csrf-token" content="{{ csrf_token }}">
+    <title>Evidence review | ExamGuard AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/report-review.css') }}">
+</head>
+<body class="admin-page">
+    <div class="admin-shell">
+        <aside class="sidebar">
+            <a class="brand" href="{{ url_for('admin') }}">
+                <span class="brand-mark" aria-hidden="true">E</span>
+                <span>ExamGuard <strong>AI</strong></span>
+            </a>
+            <p class="sidebar-label">WORKSPACE</p>
+            <nav class="sidebar-nav" aria-label="Admin navigation">
+                <a class="nav-link" href="{{ url_for('admin') }}">Overview</a>
+                <a class="nav-link" href="{{ url_for('admin_reports') }}">Reports &amp; review</a>
+                <a class="nav-link" href="{{ url_for('admin') }}#questions">Questions</a>
+                <a class="nav-link active" href="{{ url_for('admin_evidence_review') }}" aria-current="page">Evidence queue</a>
+            </nav>
+            <div class="sidebar-footer">
+                <span>Workspace access</span>
+                <strong>Administrator</strong>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <header class="topbar">
+                <div>
+                    <p class="eyebrow">EXAMGUARD AI / ADMIN</p>
+                    <h1>Evidence review</h1>
+                </div>
+                <div class="account-actions">
+                    <span class="admin-identity">
+                        <span class="avatar" aria-hidden="true">{{ admin_username[:1]|upper }}</span>
+                        <span>{{ admin_username }}</span>
+                    </span>
+                    <form method="post" action="{{ url_for('admin_logout') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button class="button button-secondary" type="submit">Sign out</button>
+                    </form>
+                </div>
+            </header>
+
+            <section class="welcome-row report-review-intro">
+                <div>
+                    <h2>Review flagged evidence</h2>
+                    <p>Inspect the captured frame, then record whether the alert is valid, a false positive, or needs follow-up.</p>
+                </div>
+                <a class="button button-secondary" href="{{ url_for('admin_reports') }}">Back to reports</a>
+            </section>
+
+            <section class="panel">
+                <form class="report-filter-form event-filter-form" method="get" action="{{ url_for('admin_evidence_review') }}">
+                    <div class="form-field">
+                        <label for="eventCandidateFilter">Candidate name</label>
+                        <input id="eventCandidateFilter" name="candidate" value="{{ filters.candidate }}" maxlength="120">
+                    </div>
+                    <div class="form-field">
+                        <label for="eventExamFilter">Exam ID</label>
+                        <input id="eventExamFilter" name="exam_id" value="{{ filters.exam_id }}" maxlength="128">
+                    </div>
+                    <div class="form-field">
+                        <label for="eventStatusFilter">Review status</label>
+                        <select id="eventStatusFilter" name="status">
+                            <option value="all" {% if filters.status == "all" %}selected{% endif %}>All statuses</option>
+                            <option value="unreviewed" {% if filters.status == "unreviewed" %}selected{% endif %}>Unreviewed</option>
+                            <option value="valid_alert" {% if filters.status == "valid_alert" %}selected{% endif %}>Valid alert</option>
+                            <option value="false_positive" {% if filters.status == "false_positive" %}selected{% endif %}>False positive</option>
+                            <option value="needs_follow_up" {% if filters.status == "needs_follow_up" %}selected{% endif %}>Needs follow-up</option>
+                        </select>
+                    </div>
+                    <div class="report-filter-actions">
+                        <button class="button button-primary" type="submit">Filter events</button>
+                        <a class="button button-secondary" href="{{ url_for('admin_evidence_review') }}">Clear</a>
+                    </div>
+                </form>
+            </section>
+
+            <section class="panel" aria-labelledby="linkedEventsHeading">
+                <div class="section-heading">
+                    <div>
+                        <h2 id="linkedEventsHeading">Exam-linked events</h2>
+                        <p>{{ linked_events|length }} event(s) match these filters.</p>
+                    </div>
+                </div>
+                <div class="review-event-grid">
+                    {% for event in linked_events %}
+                    <article class="review-event-card">
+                        <div class="review-event-heading">
+                            <div>
+                                <h3>{{ event.event_type }}</h3>
+                                <p>{{ event.candidate_name or "Candidate" }} · {{ event.occurred_at_display }}</p>
+                                <p class="event-id">Exam {{ event.exam_id }}</p>
+                            </div>
+                            <span class="review-status review-status-{{ event.review_status }}">{{ event.review_status|replace("_", " ")|title }}</span>
+                        </div>
+                        <a class="evidence-image-link" href="{{ url_for('evidence_image', filename=event.evidence_path) }}" target="_blank" rel="noopener">
+                            <img src="{{ url_for('evidence_image', filename=event.evidence_path) }}" alt="Captured evidence for {{ event.event_type }}" loading="lazy">
+                        </a>
+                        <form class="event-review-form" data-event-id="{{ event.event_id }}">
+                            <label for="reviewStatus{{ event.event_id }}">Review outcome</label>
+                            <select id="reviewStatus{{ event.event_id }}" name="status">
+                                <option value="unreviewed" {% if event.review_status == "unreviewed" %}selected{% endif %}>Unreviewed</option>
+                                <option value="valid_alert" {% if event.review_status == "valid_alert" %}selected{% endif %}>Valid alert</option>
+                                <option value="false_positive" {% if event.review_status == "false_positive" %}selected{% endif %}>False positive</option>
+                                <option value="needs_follow_up" {% if event.review_status == "needs_follow_up" %}selected{% endif %}>Needs follow-up</option>
+                            </select>
+                            <label for="reviewNote{{ event.event_id }}">Reviewer note <span class="muted-detail">(optional)</span></label>
+                            <textarea id="reviewNote{{ event.event_id }}" name="note" maxlength="1000" rows="3">{{ event.review_note }}</textarea>
+                            <button class="button button-primary" type="submit">Save review</button>
+                            <p class="review-save-message" role="status" aria-live="polite"></p>
+                        </form>
+                        {% if event.reviewed_by %}
+                        <p class="review-audit">Last reviewed by {{ event.reviewed_by }}{% if event.reviewed_at_display %} · {{ event.reviewed_at_display }}{% endif %}</p>
+                        {% endif %}
+                    </article>
+                    {% else %}
+                    <p class="empty-state">No exam-linked evidence matches these filters.</p>
+                    {% endfor %}
+                </div>
+            </section>
+
+            <section class="panel" aria-labelledby="unassignedEventsHeading">
+                <div class="section-heading">
+                    <div>
+                        <h2 id="unassignedEventsHeading">Unassigned historical evidence</h2>
+                        <p>Older image files without a saved exam link are kept separate. Their candidate and exam cannot be inferred reliably.</p>
+                    </div>
+                </div>
+                <div class="review-event-grid">
+                    {% for event in unassigned_events %}
+                    <article class="review-event-card">
+                        <div class="review-event-heading">
+                            <div>
+                                <h3>{{ event.event_type }}</h3>
+                                <p>{{ event.occurred_at_display }}</p>
+                                <p class="event-id">Historical · no exam link</p>
+                            </div>
+                            <span class="review-status review-status-{{ event.review_status }}">{{ event.review_status|replace("_", " ")|title }}</span>
+                        </div>
+                        <a class="evidence-image-link" href="{{ url_for('evidence_image', filename=event.evidence_path) }}" target="_blank" rel="noopener">
+                            <img src="{{ url_for('evidence_image', filename=event.evidence_path) }}" alt="Historical captured evidence for {{ event.event_type }}" loading="lazy">
+                        </a>
+                        <form class="event-review-form" data-event-id="{{ event.event_id }}">
+                            <label for="reviewStatus{{ event.event_id }}">Review outcome</label>
+                            <select id="reviewStatus{{ event.event_id }}" name="status">
+                                <option value="unreviewed" {% if event.review_status == "unreviewed" %}selected{% endif %}>Unreviewed</option>
+                                <option value="valid_alert" {% if event.review_status == "valid_alert" %}selected{% endif %}>Valid alert</option>
+                                <option value="false_positive" {% if event.review_status == "false_positive" %}selected{% endif %}>False positive</option>
+                                <option value="needs_follow_up" {% if event.review_status == "needs_follow_up" %}selected{% endif %}>Needs follow-up</option>
+                            </select>
+                            <label for="reviewNote{{ event.event_id }}">Reviewer note <span class="muted-detail">(optional)</span></label>
+                            <textarea id="reviewNote{{ event.event_id }}" name="note" maxlength="1000" rows="3">{{ event.review_note }}</textarea>
+                            <button class="button button-primary" type="submit">Save review</button>
+                            <p class="review-save-message" role="status" aria-live="polite"></p>
+                        </form>
+                        {% if event.reviewed_by %}
+                        <p class="review-audit">Last reviewed by {{ event.reviewed_by }}{% if event.reviewed_at_display %} · {{ event.reviewed_at_display }}{% endif %}</p>
+                        {% endif %}
+                    </article>
+                    {% else %}
+                    <p class="empty-state">No unassigned historical evidence matches these filters.</p>
+                    {% endfor %}
+                </div>
+            </section>
+            <footer class="page-footer">ExamGuard AI · Administrator workspace</footer>
+        </main>
+    </div>
+    <script src="{{ url_for('static', filename='js/report-review.js') }}"></script>
+</body>
+</html>

@@ -1,4 +1,16 @@
 const webcam = document.getElementById("webcam");
+const cameraStatus = document.getElementById("cameraStatus");
+
+webcam.addEventListener("load", () => {
+    cameraStatus.textContent = "Camera feed active.";
+    cameraStatus.classList.add("connected");
+});
+
+webcam.addEventListener("error", () => {
+    cameraStatus.textContent =
+        "Camera feed unavailable. Refresh the exam page or sign in again.";
+    cameraStatus.classList.remove("connected");
+});
 
 // Backend handles camera
  function startCamera() {
@@ -12,95 +24,29 @@ startCamera();
 
 // TIMER
 let violations = 0;
-let minutes = 60;
-let seconds = 0;
-
 const timer = document.getElementById("timer");
+const saveStatus = document.getElementById("saveStatus");
+const localExamKey = "examguard.activeExam";
+let resumeToken = null;
+let deadlineAt = null;
+let examSessionReady = false;
+let autosaveTimer = null;
+let autosaveInterval = null;
+let timerInterval = null;
+let autosaveInFlight = false;
+let autosaveRequested = false;
+let examSubmitting = false;
+let progressRevision = 0;
+let lastSavedAt = 0;
 
-setInterval(() => {
+// QUESTIONS (Dynamic from Database)
 
-    if(seconds === 0){
-
-        if(minutes === 0){
-            alert("Time Up!");
-            submitExam();
-            return;
-        }
-
-        minutes--;
-        seconds = 59;
-
-    }else{
-        seconds--;
-    }
-
-    timer.innerHTML =
-    `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`;
-
-},1000);
-
-
-
-
-// QUESTIONS
-
-const questions = [
-
+let questions = [
 {
+    id: "fallback-1",
     question:"Which protocol provides reliable transport in TCP/IP?",
     options:["TCP","UDP","ICMP","ARP"]
-},
-
-{
-    question:"Which layer is responsible for routing?",
-    options:["Transport","Network","Session","Presentation"]
-},
-
-{
-    question:"What does DNS translate?",
-    options:["IP to MAC","Domain to IP","Port to IP","MAC to IP"]
-},
-
-{
-    question:"Which protocol is connectionless?",
-    options:["TCP","FTP","UDP","SMTP"]
-},
-
-{
-    question:"Which device operates at Layer 2?",
-    options:["Router","Switch","Firewall","Gateway"]
-},
-
-{
-    question:"What is HTTP used for?",
-    options:["Web communication","Email","Routing","Encryption"]
-},
-
-{
-    question:"Which protocol sends email?",
-    options:["SMTP","FTP","ARP","DNS"]
-},
-
-{
-    question:"What is the default port of HTTPS?",
-    options:["21","25","80","443"]
-},
-
-{
-    question:"Which algorithm finds shortest path?",
-    options:["Prim","Kruskal","Dijkstra","DFS"]
-},
-
-{
-    question:"The monomer (X) involved in the synthesis of Nylon 6,6 gives positive carbylamine test. If 10 moles of X are analyzed using Dumas method, the amount (in grams) of nitrogen gas evolved is___;Use: Atomic mass of N (in amu) = 14",
-    options:[
-        "275",
-        "278",
-        "280",
-        "282"
-    ]
 }
-
 ];
 
 
@@ -108,11 +54,11 @@ const questions = [
 
 let currentQuestion = 0;
 
-const answers = new Array(10).fill(null);
+let answers = new Array(questions.length).fill(null);
 
-const reviewed = new Array(10).fill(false);
+let reviewed = new Array(questions.length).fill(false);
 
-const visited = new Array(10).fill(false);
+let visited = new Array(questions.length).fill(false);
 
 visited[0] = true;
 
@@ -143,8 +89,8 @@ document.getElementById("prevBtn");
 const reviewBtn =
 document.getElementById("reviewBtn");
 
-const paletteButtons =
-document.querySelectorAll(".q-btn");
+const paletteGrid =
+document.getElementById("paletteGrid");
 
 const submitBtn =
 document.getElementById("submitBtn");
@@ -152,10 +98,10 @@ document.getElementById("submitBtn");
 
 // LOAD QUESTION
 
-function loadQuestion(){
+function loadQuestion(saveChanges = true){
 
     questionNumber.innerHTML =
-    `Question ${currentQuestion + 1} of 10`;
+    `Question ${currentQuestion + 1} of ${questions.length}`;
 
     questionText.innerHTML =
     questions[currentQuestion].question;
@@ -186,6 +132,9 @@ function loadQuestion(){
     updatePalette();
 
     updateProgress();
+    if (saveChanges) {
+        progressChanged();
+    }
 }
 
 
@@ -201,6 +150,7 @@ document.addEventListener("change",(e)=>{
         reviewed[currentQuestion] = false;
 
         updatePalette();
+        progressChanged();
     }
 
 });
@@ -243,6 +193,7 @@ reviewBtn.addEventListener("click",()=>{
     reviewed[currentQuestion] = true;
 
     updatePalette();
+    progressChanged();
 
     alert(
     `Question ${currentQuestion+1} marked for review`
@@ -253,9 +204,28 @@ reviewBtn.addEventListener("click",()=>{
 
 // PALETTE COLORS
 
+function renderPalette(){
+
+    paletteGrid.replaceChildren();
+
+    questions.forEach((_,index)=>{
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "q-btn";
+        button.textContent = String(index + 1);
+        button.setAttribute("aria-label", `Go to question ${index + 1}`);
+        button.addEventListener("click",()=>{
+            currentQuestion = index;
+            visited[index] = true;
+            loadQuestion();
+        });
+        paletteGrid.appendChild(button);
+    });
+}
+
 function updatePalette(){
 
-    paletteButtons.forEach((btn,index)=>{
+    paletteGrid.querySelectorAll(".q-btn").forEach((btn,index)=>{
 
         btn.style.background = "#ffffff";
         btn.style.color = "#000000";
@@ -319,59 +289,347 @@ function updateProgress(){
 }
 
 
-// PALETTE CLICK
-
-paletteButtons.forEach((btn,index)=>{
-
-    btn.addEventListener("click",()=>{
-
-        currentQuestion = index;
-
-        visited[index] = true;
-
-        loadQuestion();
-
-    });
-
-});
-
-
 // SUBMIT
 
 submitBtn.addEventListener("click",()=>{
-
-    let answeredCount = 0;
-
-    answers.forEach(ans=>{
-
-        if(ans !== null){
-
-            answeredCount++;
-        }
-
-    });
-
-    const confirmSubmit =
-    confirm(
-    `You have answered ${answeredCount} out of 10 questions.\n\nSubmit Exam?`
-    );
-
-    if(confirmSubmit){
-
-        alert("Exam Submitted Successfully!");
-
-        window.location.href = "/result";
-    }
-
+    submitExam("manual", true);
 });
 
 
-// INITIAL LOAD
+function setSaveStatus(message, statusClass = ""){
+    saveStatus.textContent = message;
+    saveStatus.className = `save-status ${statusClass}`.trim();
+}
 
-loadQuestion();
+
+function getProgressSnapshot(){
+    return {
+        question_ids: questions.map(question => question.id),
+        answers: [...answers],
+        reviewed: [...reviewed],
+        visited: [...visited],
+        current_question: currentQuestion
+    };
+}
+
+
+function persistLocalDraft(savedAt = Date.now()){
+    if(!resumeToken){
+        return;
+    }
+
+    const snapshot = {
+        resume_token: resumeToken,
+        saved_at: savedAt,
+        ...getProgressSnapshot()
+    };
+
+    try{
+        localStorage.setItem(localExamKey, JSON.stringify(snapshot));
+    }catch(error){
+        console.error("Could not store the local exam recovery copy.", error);
+        setSaveStatus(
+            "Browser storage is unavailable; keep this page open while progress syncs.",
+            "error"
+        );
+    }
+}
+
+
+function progressChanged(){
+    progressRevision++;
+    persistLocalDraft();
+
+    if(!examSessionReady){
+        return;
+    }
+
+    setSaveStatus("Unsaved change — saving...", "");
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(flushAutosave, 350);
+}
+
+
+async function flushAutosave(){
+    if(!examSessionReady || !resumeToken){
+        return;
+    }
+
+    if(autosaveInFlight){
+        autosaveRequested = true;
+        return;
+    }
+
+    autosaveInFlight = true;
+    do{
+        autosaveRequested = false;
+        const revision = progressRevision;
+        const payload = {
+            resume_token: resumeToken,
+            ...getProgressSnapshot()
+        };
+
+        try{
+            const response = await fetch("/api/exam/autosave", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+            if(!response.ok){
+                throw new Error(result.error || "Progress could not be saved.");
+            }
+            if(result.status === "submitted"){
+                finishSubmittedExam();
+                return;
+            }
+
+            lastSavedAt = result.last_saved_at * 1000;
+            if(revision === progressRevision){
+                persistLocalDraft(lastSavedAt);
+                setSaveStatus("All answers saved", "saved");
+            }else{
+                persistLocalDraft();
+                autosaveRequested = true;
+            }
+        }catch(error){
+            console.error("Exam autosave failed.", error);
+            persistLocalDraft();
+            setSaveStatus(
+                "Server save failed — your browser has a recovery copy. Retrying...",
+                "error"
+            );
+        }
+    }while(autosaveRequested && examSessionReady);
+
+    autosaveInFlight = false;
+}
+
+
+function startExamTimer(){
+    clearInterval(timerInterval);
+
+    const updateTimer = () => {
+        const remaining = Math.max(
+            0,
+            Math.ceil(deadlineAt - Date.now() / 1000)
+        );
+        const minutes = Math.floor(remaining / 60);
+        const seconds = remaining % 60;
+        timer.textContent =
+            `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+
+        if(remaining === 0){
+            clearInterval(timerInterval);
+            submitExam("time_expired", false);
+        }
+    };
+
+    updateTimer();
+    timerInterval = setInterval(updateTimer, 1000);
+}
+
+
+function restoreLocalDraft(draft, serverSavedAt){
+    if(
+        !draft ||
+        !Array.isArray(draft.answers) ||
+        !Array.isArray(draft.reviewed) ||
+        !Array.isArray(draft.visited) ||
+        !Array.isArray(draft.question_ids) ||
+        draft.answers.length !== questions.length ||
+        draft.reviewed.length !== questions.length ||
+        draft.visited.length !== questions.length ||
+        JSON.stringify(draft.question_ids.map(String)) !==
+            JSON.stringify(questions.map(question => String(question.id))) ||
+        !Number.isInteger(draft.current_question) ||
+        draft.current_question < 0 ||
+        draft.current_question >= questions.length ||
+        typeof draft.saved_at !== "number" ||
+        draft.saved_at <= serverSavedAt * 1000
+    ){
+        return false;
+    }
+
+    if(draft.answers.some((answer, index) =>
+        answer !== null &&
+        (!Number.isInteger(answer) || answer < 0 || answer >= questions[index].options.length)
+    )){
+        return false;
+    }
+    if(draft.reviewed.some(flag => typeof flag !== "boolean") ||
+       draft.visited.some(flag => typeof flag !== "boolean")){
+        return false;
+    }
+
+    answers = [...draft.answers];
+    reviewed = [...draft.reviewed];
+    visited = [...draft.visited];
+    currentQuestion = draft.current_question;
+    return true;
+}
+
+
+function disableExamControls(){
+    document.querySelectorAll(
+        ".question-card input, .question-card button, #submitBtn"
+    ).forEach(control => {
+        control.disabled = true;
+    });
+}
+
+
+function finishSubmittedExam(){
+    examSubmitting = true;
+    examSessionReady = false;
+    clearInterval(timerInterval);
+    clearInterval(autosaveInterval);
+    clearTimeout(autosaveTimer);
+    try{
+        localStorage.removeItem(localExamKey);
+    }catch(error){
+        console.error("Could not clear the completed local exam copy.", error);
+    }
+    window.location.assign("/result");
+}
+
+
+async function submitExam(reason = "manual", confirmSubmission = false){
+    if(!examSessionReady || examSubmitting){
+        return;
+    }
+
+    if(confirmSubmission){
+        const answeredCount = answers.filter(answer => answer !== null).length;
+        const confirmed = confirm(
+            `You have answered ${answeredCount} out of ${questions.length} questions.\n\nSubmit Exam?`
+        );
+        if(!confirmed){
+            return;
+        }
+    }
+
+    examSubmitting = true;
+    clearTimeout(autosaveTimer);
+    clearInterval(timerInterval);
+    submitBtn.disabled = true;
+    persistLocalDraft();
+    setSaveStatus("Saving your final answers and submitting exam...", "");
+
+    try{
+        const response = await fetch("/api/exam/submit", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                resume_token: resumeToken,
+                reason,
+                ...getProgressSnapshot()
+            })
+        });
+        const result = await response.json();
+        if(!response.ok){
+            throw new Error(result.error || "Exam could not be submitted.");
+        }
+        finishSubmittedExam();
+    }catch(error){
+        console.error("Exam submission failed.", error);
+        examSubmitting = false;
+        submitBtn.disabled = false;
+        persistLocalDraft();
+        setSaveStatus(
+            "Submission could not reach the server. Your answers are saved in this browser; retrying...",
+            "error"
+        );
+        if(reason === "time_expired"){
+            setTimeout(() => submitExam("time_expired", false), 5000);
+        }
+    }
+}
+
+
+async function loadDynamicQuestions(){
+    let localDraft = null;
+    try{
+        localDraft = JSON.parse(localStorage.getItem(localExamKey) || "null");
+    }catch(error){
+        console.error("The local exam recovery copy could not be read.", error);
+    }
+
+    try{
+        const response = await fetch("/api/exam/session", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                resume_token: localDraft?.resume_token || null
+            })
+        });
+        const data = await response.json();
+        if(!response.ok){
+            throw new Error(data.error || "Could not open the exam session.");
+        }
+        if(data.status === "submitted"){
+            finishSubmittedExam();
+            return;
+        }
+        if(!Array.isArray(data.questions) || data.questions.length === 0){
+            throw new Error("No exam questions are available.");
+        }
+        if(typeof data.exam_id !== "string" || !data.exam_id){
+            throw new Error("Could not identify the secure exam session.");
+        }
+
+        resumeToken = data.resume_token;
+        deadlineAt = data.deadline_at;
+        questions = data.questions;
+        answers = [...data.answers];
+        reviewed = [...data.reviewed];
+        visited = [...data.visited];
+        currentQuestion = data.current_question;
+        lastSavedAt = data.last_saved_at * 1000;
+        cameraStatus.textContent = "Connecting to camera feed...";
+        webcam.src = `/video_feed?exam_id=${encodeURIComponent(data.exam_id)}`;
+
+        const restoredLocalDraft =
+            localDraft?.resume_token === resumeToken &&
+            restoreLocalDraft(localDraft, data.last_saved_at);
+
+        renderPalette();
+        examSessionReady = true;
+        loadQuestion(false);
+        persistLocalDraft(
+            restoredLocalDraft ? localDraft.saved_at : lastSavedAt
+        );
+        setSaveStatus(
+            restoredLocalDraft
+                ? "Recovered your latest answers from this browser; syncing..."
+                : data.last_saved_at > data.started_at
+                    ? "Saved exam restored"
+                    : "Answers save automatically",
+            "saved"
+        );
+        startExamTimer();
+        if(restoredLocalDraft){
+            progressChanged();
+        }
+        autosaveInterval = setInterval(flushAutosave, 10000);
+    }catch(error){
+        console.error("Could not initialize the exam session.", error);
+        setSaveStatus(error.message, "error");
+        disableExamControls();
+    }
+}
+
+
+window.addEventListener("beforeunload", persistLocalDraft);
+loadDynamicQuestions();
+
+
 document.addEventListener("visibilitychange", () => {
 
     if(document.hidden){
+
+       persistLocalDraft();
+       flushAutosave();
 
        violations = violations + 1;
        fetch("/update_violation", {
@@ -413,29 +671,6 @@ function enterFullscreen() {
             });
 
     }
-}
-
-// -----------------------------
-// AUTO SUBMIT ON TIMER END
-// -----------------------------
-
-function submitExam() {
-
-    let answeredCount = 0;
-
-    answers.forEach(ans => {
-
-        if(ans !== null){
-            answeredCount++;
-        }
-
-    });
-
-    alert(
-        `Exam Submitted\n\nAnswered ${answeredCount} out of ${questions.length} questions`
-    );
-
-    window.location.href = "/result";
 }
 
 // -----------------------------
@@ -486,13 +721,13 @@ async function updateMonitorData() {
             console.log("No Face Detected");
 }
 
-if (data.violations >= 25) {
+if (data.violations >= 25 && examSessionReady && !examSubmitting) {
 
     alert(
         "Maximum violations exceeded.\nExam will be submitted automatically."
     );
 
-    window.location.href = "/result";
+    submitExam("violation_limit", false);
 }
 
 

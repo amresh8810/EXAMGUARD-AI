@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cloud exam details | ExamGuard AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloud-exams.css') }}">
+</head>
+<body class="admin-page">
+    <div class="admin-shell">
+        <aside class="sidebar">
+            <a class="brand" href="{{ url_for('admin') }}">
+                <span class="brand-mark" aria-hidden="true">E</span>
+                <span>ExamGuard <strong>AI</strong></span>
+            </a>
+            <p class="sidebar-label">WORKSPACE</p>
+            <nav class="sidebar-nav" aria-label="Admin navigation">
+                <a class="nav-link" href="{{ url_for('admin') }}">Overview</a>
+                <a class="nav-link" href="{{ url_for('admin_reports') }}">Report review</a>
+                <a class="nav-link active" href="{{ url_for('cloud_exams.admin_index') }}" aria-current="page">Cloud exams</a>
+            </nav>
+            <div class="sidebar-footer">
+                <span>Workspace access</span>
+                <strong>Administrator</strong>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <header class="topbar">
+                <div>
+                    <p class="eyebrow">EXAMGUARD AI / CLOUD WORKSPACE</p>
+                    <h1>Exam details</h1>
+                </div>
+                <div class="account-actions">
+                    <span class="admin-identity">
+                        <span class="avatar" aria-hidden="true">{{ admin_username[:1]|upper }}</span>
+                        <span>{{ admin_username }}</span>
+                    </span>
+                    <form method="post" action="{{ url_for('admin_logout') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button class="button button-secondary" type="submit">Sign out</button>
+                    </form>
+                </div>
+            </header>
+            <p><a class="back-link" href="{{ url_for('cloud_exams.admin_index') }}">Back to Cloud exams</a></p>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <div class="cloud-alert-stack" aria-live="polite">
+                {% for category, message in messages %}
+                <p class="cloud-alert cloud-alert-{{ category }}">{{ message }}</p>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% endwith %}
+            {% if error %}
+            <p class="cloud-alert cloud-alert-error" role="alert">{{ error }}</p>
+            {% endif %}
+
+            {% if detail %}
+            {% set exam = detail.exam %}
+            <section class="panel cloud-detail-heading">
+                <div>
+                    <p class="eyebrow">CLOUD EXAM</p>
+                    <h2>{{ exam.title }}</h2>
+                    <p>{{ exam.opens_at }} <span aria-hidden="true">→</span> {{ exam.closes_at }}</p>
+                </div>
+                <span class="cloud-status cloud-status-{{ exam.status }}">{{ exam.status|replace('_', ' ')|title }}</span>
+            </section>
+
+            <section class="metric-grid cloud-metric-grid" aria-label="Cloud exam statistics">
+                <article class="metric-card"><span class="metric-label">Roster size</span><strong class="metric-value">{{ detail.candidate_total }}</strong><span class="metric-note">Imported candidates</span></article>
+                <article class="metric-card"><span class="metric-label">Attempts started</span><strong class="metric-value">{{ detail.attempt_total }}</strong><span class="metric-note">Saved cloud attempts</span></article>
+                <article class="metric-card"><span class="metric-label">Duration</span><strong class="metric-value">{{ exam.duration_minutes }}</strong><span class="metric-note">Minutes per attempt</span></article>
+                <article class="metric-card"><span class="metric-label">Attempts / pass mark</span><strong class="metric-value">{{ exam.attempt_limit }} / {{ exam.pass_marks }}%</strong><span class="metric-note">{{ "Questions randomized" if exam.randomize_questions else "Question order fixed" }}</span></article>
+            </section>
+
+            <section class="panel cloud-action-grid" aria-label="Exam administration">
+                <article class="cloud-action-card">
+                    <h2>Candidate invitation</h2>
+                    <p>Use the public exam link below and privately distribute one-time access codes from the roster download.</p>
+                    <div class="cloud-link-row">
+                        <a class="table-link" href="{{ url_for('cloud_exams.candidate_login', exam_id=exam.id) }}" target="_blank" rel="noopener">Open candidate access page</a>
+                    </div>
+                    <form class="cloud-upload-form" method="post" enctype="multipart/form-data" action="{{ url_for('cloud_exams.import_roster', exam_id=exam.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <label for="roster-file">Roster CSV or XLSX</label>
+                        <input id="roster-file" name="roster" type="file" accept=".csv,.xlsx" required>
+                        <small>Header columns: candidate_name and registration_number. Import works only while this exam is a draft and before attempts start.</small>
+                        <button class="button button-primary" type="submit" {% if exam.status != "draft" %}disabled{% endif %}>Import roster and download invitation codes</button>
+                    </form>
+                </article>
+
+                <article class="cloud-action-card">
+                    <h2>Exam availability</h2>
+                    <p>Opening allows rostered candidates to start within the scheduled window. Closing prevents new attempts but lets active attempts save or submit until their own deadline.</p>
+                    {% if exam.status == "draft" or exam.status == "open" %}
+                    <form method="post" action="{{ url_for('cloud_exams.change_exam_status', exam_id=exam.id) }}" data-confirm="{% if exam.status == 'open' %}Close this exam to new attempts?{% else %}Open this exam to rostered candidates?{% endif %}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="status" value="{{ 'closed' if exam.status == 'open' else 'open' }}">
+                        <button class="button {{ 'button-danger' if exam.status == 'open' else 'button-primary' }}" type="submit">{{ "Close exam" if exam.status == "open" else "Open exam" }}</button>
+                    </form>
+                    {% else %}
+                    <p class="cloud-note">Closed exams cannot be reopened.</p>
+                    {% endif %}
+                    <a class="button button-secondary" href="{{ url_for('cloud_exams.export_exam_results', exam_id=exam.id) }}">Download attempts CSV</a>
+                </article>
+            </section>
+
+            {% if exam.status == "closed" and not exam.results_published_at %}
+            <section class="panel cloud-publish-panel">
+                <div>
+                    <h2>Publish candidate results</h2>
+                    <p>Publishing is blocked while any attempt is still within its deadline. After publication, candidates can see only their own latest submitted result.</p>
+                </div>
+                <form method="post" action="{{ url_for('cloud_exams.publish_exam_results', exam_id=exam.id) }}" data-confirm="Publish results for all submitted candidates?">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button class="button button-primary" type="submit">Publish results</button>
+                </form>
+            </section>
+            {% elif exam.results_published_at %}
+            <p class="cloud-alert cloud-alert-success">Results published at {{ exam.results_published_at }}. Candidate result access is now enabled.</p>
+            {% endif %}
+
+            <section class="panel">
+                <div class="section-heading">
+                    <div><h2>Candidate roster</h2><p>Registration numbers are visible to administrators only.</p></div>
+                    <span class="count-pill">{{ detail.candidate_total }} candidates</span>
+                </div>
+                {% if detail.candidates_truncated %}<p class="cloud-note">Showing the first 100 roster entries. Use the attempts CSV for a complete export.</p>{% endif %}
+                {% if detail.candidates %}
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th scope="col">Candidate</th><th scope="col">Registration number</th><th scope="col">Access</th><th scope="col">Imported</th></tr></thead>
+                        <tbody>
+                        {% for candidate in detail.candidates %}
+                            <tr>
+                                <td class="candidate-cell">{{ candidate.candidate_name }}</td>
+                                <td>{{ candidate.registration_number }}</td>
+                                <td>{{ "Active" if candidate.is_active else "Disabled" }}</td>
+                                <td>{{ candidate.created_at }}</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="empty-state">No candidates have been imported. Upload a roster while the exam is still a draft.</p>
+                {% endif %}
+            </section>
+
+            <section class="panel">
+                <div class="section-heading">
+                    <div><h2>Candidate attempts</h2><p>Scores remain candidate-hidden until the administrator publishes results.</p></div>
+                    <span class="count-pill">{{ detail.attempt_total }} attempts</span>
+                </div>
+                {% if detail.attempts_truncated %}<p class="cloud-note">Showing the 100 most recent attempts. Download the CSV for the full attempt list.</p>{% endif %}
+                {% if detail.attempts %}
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th scope="col">Candidate</th><th scope="col">Registration number</th><th scope="col">Attempt</th><th scope="col">Status</th><th scope="col">Score</th><th scope="col">Started</th><th scope="col">Submitted</th></tr></thead>
+                        <tbody>
+                        {% for attempt in detail.attempts %}
+                            <tr>
+                                <td class="candidate-cell">{{ attempt.candidate_name }}</td>
+                                <td>{{ attempt.registration_number }}</td>
+                                <td>{{ attempt.attempt_number }}</td>
+                                <td>{{ attempt.status|replace('_', ' ')|title }}</td>
+                                <td>{% if attempt.score is not none %}{{ attempt.score }} / {{ attempt.total_questions }} · {{ "Pass" if attempt.passed else "Not passed" }}{% else %}—{% endif %}</td>
+                                <td>{{ attempt.started_at }}</td>
+                                <td>{{ attempt.submitted_at or "—" }}</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="empty-state">Candidate attempts will appear when the exam starts.</p>
+                {% endif %}
+            </section>
+            {% endif %}
+            <footer class="page-footer">Cloud exam administration · Private roster and result data</footer>
+        </main>
+    </div>
+    <script src="{{ url_for('static', filename='js/cloud-admin.js') }}" defer></script>
+</body>
+</html>

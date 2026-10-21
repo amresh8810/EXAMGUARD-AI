@@ -231,6 +231,93 @@ View ({{ report[4] }})
 
 </table>
 
+<div style="margin-top: 50px;">
+    <h1 style="color:#4CAF50;margin-bottom:20px;">Manage Examination Questions</h1>
+    
+    <!-- Add Question Card -->
+    <div style="background:#1f2c4d;padding:25px;border-radius:15px;margin-bottom:30px;box-shadow:0px 4px 15px rgba(0,0,0,0.3);">
+        <h2 style="color:#60a5fa;margin-bottom:15px;">➕ Add New Question</h2>
+        <form action="/api/questions/add" method="POST">
+            <div style="margin-bottom:15px;">
+                <label style="display:block;margin-bottom:5px;font-weight:bold;">Question Text:</label>
+                <input type="text" name="question" placeholder="Enter question..." required style="width:100%;padding:10px;border-radius:8px;border:none;background:#2d3e63;color:white;font-size:15px;">
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px;">
+                <div>
+                    <label style="display:block;margin-bottom:5px;">Option A:</label>
+                    <input type="text" name="option_a" placeholder="Option A" required style="width:100%;padding:10px;border-radius:8px;border:none;background:#2d3e63;color:white;">
+                </div>
+                <div>
+                    <label style="display:block;margin-bottom:5px;">Option B:</label>
+                    <input type="text" name="option_b" placeholder="Option B" required style="width:100%;padding:10px;border-radius:8px;border:none;background:#2d3e63;color:white;">
+                </div>
+                <div>
+                    <label style="display:block;margin-bottom:5px;">Option C:</label>
+                    <input type="text" name="option_c" placeholder="Option C" required style="width:100%;padding:10px;border-radius:8px;border:none;background:#2d3e63;color:white;">
+                </div>
+                <div>
+                    <label style="display:block;margin-bottom:5px;">Option D:</label>
+                    <input type="text" name="option_d" placeholder="Option D" required style="width:100%;padding:10px;border-radius:8px;border:none;background:#2d3e63;color:white;">
+                </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:20px;">
+                <div>
+                    <label style="font-weight:bold;margin-right:10px;">Correct Answer:</label>
+                    <select name="correct" style="padding:10px 15px;border-radius:8px;background:#2d3e63;color:white;border:none;font-size:15px;">
+                        <option value="0">Option A</option>
+                        <option value="1">Option B</option>
+                        <option value="2">Option C</option>
+                        <option value="3">Option D</option>
+                    </select>
+                </div>
+                <button type="submit" style="background:#22c55e;color:white;border:none;padding:12px 25px;border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer;">
+                    Add Question
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Questions Table -->
+    <h2 style="color:#60a5fa;margin-bottom:15px;">Current Questions in Database ({{ questions|length }})</h2>
+    <table>
+        <tr>
+            <th style="width:50px;">#</th>
+            <th>Question</th>
+            <th>Options</th>
+            <th>Correct Answer</th>
+            <th style="width:100px;">Action</th>
+        </tr>
+        {% for q in questions %}
+        <tr>
+            <td>{{ q.id }}</td>
+            <td style="text-align:left;padding-left:20px;font-weight:bold;">{{ q.question }}</td>
+            <td style="text-align:left;font-size:14px;">
+                A: {{ q.options[0] }}<br>
+                B: {{ q.options[1] }}<br>
+                C: {{ q.options[2] }}<br>
+                D: {{ q.options[3] }}
+            </td>
+            <td>
+                <span style="color:#22c55e;font-weight:bold;">
+                    {% if q.correct == 0 %}Option A: {{ q.options[0] }}
+                    {% elif q.correct == 1 %}Option B: {{ q.options[1] }}
+                    {% elif q.correct == 2 %}Option C: {{ q.options[2] }}
+                    {% else %}Option D: {{ q.options[3] }}
+                    {% endif %}
+                </span>
+            </td>
+            <td>
+                <form action="/api/questions/delete/{{ q.id }}" method="POST" onsubmit="return confirm('Delete this question?');">
+                    <button type="submit" style="background:#ef4444;color:white;border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-weight:bold;">
+                        Delete
+                    </button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+
 <script>
 
 function searchTable(){
@@ -282,11 +369,11 @@ document.getElementById("violationChart"),
     type:"bar",
 
     data:{
-        labels:["Srijan Akshit"],
+        labels: [{% for r in reports %}"{{ r[1] }}"{% if not loop.last %},{% endif %}{% endfor %}],
 
         datasets:[{
             label:"Violation Count",
-            data:[0],
+            data: [{% for r in reports %}{{ r[3] }}{% if not loop.last %},{% endif %}{% endfor %}],
 
             backgroundColor:"#4CAF50",
             borderColor:"#81C784",
@@ -393,7 +480,7 @@ document.getElementById("riskChart"),
     padding-top:20px;
 ">
     <p>ExamGuard AI v1.0</p>
-    <p>Developed by Srijan Akshit</p>
+    <p>Developed by Amresh kumar</p>
 </footer>
 </body>
 </html>

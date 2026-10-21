@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Admin sign in | ExamGuard AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+</head>
+<body class="auth-page">
+    <main class="auth-card">
+        <a class="brand" href="{{ url_for('login') }}" aria-label="ExamGuard AI home">
+            <span class="brand-mark" aria-hidden="true">E</span>
+            <span>ExamGuard <strong>AI</strong></span>
+        </a>
+
+        <p class="eyebrow">ADMINISTRATOR ACCESS</p>
+        <h1>Welcome back</h1>
+        <p class="auth-subtitle">Sign in to manage examinations and review proctoring reports.</p>
+
+        {% if error %}
+        <div class="form-alert" role="alert">{{ error }}</div>
+        {% endif %}
+
+        <form method="post" action="{{ url_for('admin_login') }}">
+            <label for="username">Username</label>
+            <input
+                id="username"
+                name="username"
+                type="text"
+                autocomplete="username"
+                required
+                autofocus
+            >
+
+            <label for="password">Password</label>
+            <input
+                id="password"
+                name="password"
+                type="password"
+                autocomplete="current-password"
+                required
+            >
+
+            <button class="button button-primary auth-submit" type="submit">Sign in</button>
+        </form>
+
+        <a class="back-link" href="{{ url_for('login') }}">Back to candidate sign in</a>
+    </main>
+</body>
+</html>

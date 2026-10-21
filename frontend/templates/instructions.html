@@ -5,8 +5,9 @@
 
     <title>Exam Instructions</title>
 
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet"
-          href="{{ url_for('static', filename='css/instructions.css') }}">
+          href="{{ url_for('static', filename='css/instructions.css') }}?v=2">
 
 </head>
 
@@ -47,35 +48,80 @@
             </div>
 
             <div class="rule">
-                ✅ Do not refresh or close the browser during the exam.
+                ✅ Answers are saved automatically; if your session expires, sign in again to resume.
+            </div>
+
+            <div class="rule">
+                ✅ The 60-minute exam timer continues while you are away and submits automatically at the deadline.
             </div>
 
         </div>
 
-        <div class="status-box">
-
-            <div class="status">
-                <span class="dot"></span>
-                Face Recognition Active
+        <section class="readiness-panel" aria-labelledby="readinessTitle">
+            <div class="readiness-heading">
+                <div>
+                    <h2 id="readinessTitle">Pre-exam readiness check</h2>
+                    <p>Allow camera access and keep one face in view. A new exam starts its timer when opened; resumed exams keep their existing deadline.</p>
+                </div>
+                <button id="runReadinessBtn" class="check-btn" type="button">
+                    Check system
+                </button>
             </div>
 
+            <div class="readiness-grid" aria-live="polite">
+                <div class="readiness-item" id="candidateSessionCheck" data-state="pending">
+                    <span class="readiness-icon" aria-hidden="true"></span>
+                    <span><strong>Secure candidate session</strong><small>Not checked</small></span>
+                </div>
+                <div class="readiness-item" id="cameraCheck" data-state="pending">
+                    <span class="readiness-icon" aria-hidden="true"></span>
+                    <span><strong>Camera live</strong><small>Not checked</small></span>
+                </div>
+                <div class="readiness-item" id="faceCheck" data-state="pending">
+                    <span class="readiness-icon" aria-hidden="true"></span>
+                    <span><strong>One face visible</strong><small>Not checked</small></span>
+                </div>
+                <div class="readiness-item" id="questionsCheck" data-state="pending">
+                    <span class="readiness-icon" aria-hidden="true"></span>
+                    <span><strong>Questions available</strong><small>Not checked</small></span>
+                </div>
+                <div class="readiness-item" id="autosaveCheck" data-state="pending">
+                    <span class="readiness-icon" aria-hidden="true"></span>
+                    <span><strong>Answer autosave</strong><small>Not checked</small></span>
+                </div>
+            </div>
+
+            <video
+                id="readinessCamera"
+                class="readiness-camera"
+                autoplay
+                muted
+                playsinline
+                aria-label="Live camera preview for the exam readiness check">
+            </video>
+            <p id="readinessMessage" class="readiness-message" role="status" aria-live="polite">
+                Run the check before starting your exam.
+            </p>
+            <p id="readinessError" class="readiness-error" role="alert"></p>
+        </section>
+
+        <div class="status-box">
             <div class="status">
                 <span class="dot"></span>
                 Tab Monitoring Active
             </div>
-
         </div>
 
-        <button id="startExamBtn">
-    Start Examination →
-</button>
+        <button id="startExamBtn" type="button" disabled>
+            Start Examination
+        </button>
 
     </div>
 
 </div>
 
 
-<script src="{{ url_for('static', filename='js/instructions.js') }}"></script>
+<script src="{{ url_for('static', filename='js/instructions.js') }}?v=2"></script>
 </body>
 
 </html>

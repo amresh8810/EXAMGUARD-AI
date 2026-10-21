@@ -76,12 +76,14 @@
 
                     <input
                         type="text"
+                        id="candidateName"
                         placeholder="Full Name"
                         required
                     >
 
                     <input
                         type="text"
+                        id="regNumber"
                         placeholder="Registration Number"
                         required
                     >
@@ -102,47 +104,7 @@
     <div class="particle p2"></div>
     <div class="particle p3"></div>
 
-    <script>
-
-        document.getElementById("loginForm").addEventListener(
-            "submit",
-            async function(event){
-
-                event.preventDefault();
-
-                alert("Verifying Candidate...");
-
-                try{
-
-                    const response = await fetch("/verify");
-                    const result = await response.json();
-
-                    if(result.status === "success"){
-
-                        alert("Identity Verified");
-
-                        window.location.href = "/instructions";
-
-                    }else{
-
-                        alert("Verification Failed");
-
-                    }
-
-                }catch(error){
-
-                    console.log(error);
-
-                    alert("Verification Error");
-
-                }
-
-            }
-        );
-
-    </script>
-
-    <script src="{{ url_for('static', filename='js/login.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/login.js') }}?v=3"></script>
 
 </body>
 

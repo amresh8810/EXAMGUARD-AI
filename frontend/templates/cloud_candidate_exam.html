@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cloud examination | ExamGuard AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloud-exams.css') }}">
+</head>
+<body class="cloud-candidate-page cloud-exam-page">
+    <header class="cloud-exam-topbar">
+        <a class="candidate-brand" href="{{ url_for('cloud_exams.candidate_exam', exam_id=exam_id) }}"><span aria-hidden="true">E</span> ExamGuard <strong>AI</strong></a>
+        <span class="cloud-candidate-name">{{ candidate_name }}</span>
+        <div class="cloud-exam-timer" id="cloudExamTimer" aria-label="Time remaining">--:--:--</div>
+    </header>
+    <main class="cloud-exam-main">
+        <section class="cloud-question-panel" aria-labelledby="cloudQuestionText">
+            <p class="candidate-eyebrow" id="cloudQuestionNumber">Question 1</p>
+            <p id="cloudSaveStatus" class="cloud-status-message" role="status" aria-live="polite">Loading saved progress…</p>
+            <h1 id="cloudQuestionText"></h1>
+            <div id="cloudOptions" class="cloud-options"></div>
+            <div class="cloud-question-navigation">
+                <button id="cloudPrevious" class="candidate-secondary-button" type="button">Previous</button>
+                <button id="cloudNext" class="candidate-primary-button" type="button">Next</button>
+            </div>
+        </section>
+        <aside class="cloud-monitor-panel" aria-label="Camera and question progress">
+            <h2>Camera monitoring</h2>
+            <div class="cloud-monitor-video"><video id="cloudExamCamera" autoplay playsinline muted aria-label="Live exam camera"></video></div>
+            <p id="cloudMonitorStatus" class="cloud-status-message" role="status" aria-live="polite">Connecting to the browser camera…</p>
+            <h2>Question palette</h2>
+            <div id="cloudQuestionPalette" class="cloud-question-palette"></div>
+            <p class="cloud-palette-legend"><span class="palette-answered"></span> Answered <span class="palette-current"></span> Current</p>
+            <button id="cloudSubmitExam" class="candidate-danger-button" type="button">Submit exam</button>
+        </aside>
+    </main>
+    <script id="cloudAttemptConfig" type="application/json">{{ {"exam_id": exam_id, "csrf_token": csrf_token, "attempt": attempt, "autosave_url": url_for("cloud_exams.candidate_autosave", exam_id=exam_id), "submit_url": url_for("cloud_exams.candidate_submit", exam_id=exam_id), "proctor_url": url_for("cloud_exams.candidate_proctor_frame", exam_id=exam_id), "result_url": url_for("cloud_exams.candidate_result", exam_id=exam_id)}|tojson }}</script>
+    <script src="{{ url_for('static', filename='js/cloud-candidate.js') }}" defer></script>
+</body>
+</html>

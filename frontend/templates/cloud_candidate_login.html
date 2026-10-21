@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Candidate access | ExamGuard AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloud-exams.css') }}">
+</head>
+<body class="cloud-candidate-page">
+    <main class="candidate-shell">
+        <a class="candidate-brand" href="{{ url_for('login') }}"><span aria-hidden="true">E</span> ExamGuard <strong>AI</strong></a>
+        <section class="candidate-card">
+            <p class="candidate-eyebrow">SECURE CLOUD EXAM</p>
+            <h1>{{ exam.title if exam else "Candidate access" }}</h1>
+            {% if exam %}
+            <p class="candidate-intro">Sign in with the registration number and private invitation code provided by your administrator.</p>
+            <dl class="candidate-exam-meta">
+                <div><dt>Exam window</dt><dd>{{ exam.opens_at }} <span aria-hidden="true">→</span> {{ exam.closes_at }}</dd></div>
+                <div><dt>Duration</dt><dd>{{ exam.duration_minutes }} minutes per attempt</dd></div>
+                <div><dt>Availability</dt><dd>{{ exam.status|replace('_', ' ')|title }}</dd></div>
+            </dl>
+            {% endif %}
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <div class="cloud-alert-stack" aria-live="polite">
+                {% for category, message in messages %}
+                <p class="cloud-alert cloud-alert-{{ category }}">{{ message }}</p>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% endwith %}
+            {% if error %}<p class="cloud-alert cloud-alert-error" role="alert">{{ error }}</p>{% endif %}
+            {% if exam and exam.status != "closed" %}
+            <form class="candidate-form" method="post" action="{{ url_for('cloud_exams.candidate_access', exam_id=exam_id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <label for="registration-number">Registration number</label>
+                <input id="registration-number" name="registration_number" type="text" maxlength="128" autocomplete="username" required>
+                <label for="access-code">Private invitation code</label>
+                <input id="access-code" name="access_code" type="password" maxlength="100" autocomplete="one-time-code" required>
+                <button class="candidate-primary-button" type="submit">Continue to camera check</button>
+            </form>
+            {% elif exam %}
+            <p class="cloud-alert cloud-alert-info">This exam is closed. Contact the administrator if you think this is a mistake.</p>
+            {% endif %}
+            <p class="candidate-footnote">Keep your invitation code private. The existing local exam sign-in is separate.</p>
+        </section>
+    </main>
+</body>
+</html>

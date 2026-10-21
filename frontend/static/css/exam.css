@@ -66,6 +66,21 @@ body{
 .question-header{
     color:#60a5fa;
     font-size:18px;
+}
+
+.save-status{
+    min-height:20px;
+    margin:6px 0 12px;
+    color:#54709b;
+    font-size:13px;
+}
+
+.save-status.error{
+    color:#b42332;
+}
+
+.save-status.saved{
+    color:#16815f;
     margin-bottom:20px;
 }
 
@@ -183,6 +198,16 @@ body{
     background:#111827;
     border:2px solid rgba(255,255,255,0.08);
     margin-bottom:12px;
+}
+
+.camera-status{
+    margin:0 0 12px;
+    color:#fbbf24;
+    font-size:0.9rem;
+}
+
+.camera-status.connected{
+    color:#22c55e;
 }
 
 .camera-stats p{

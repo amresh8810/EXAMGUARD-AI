@@ -38,6 +38,10 @@
                 Question 1 of 10
             </div>
 
+            <p id="saveStatus" class="save-status" role="status" aria-live="polite">
+                Preparing secure exam session...
+            </p>
+
             <h2 id="questionText">
                 Which protocol provides reliable transport in TCP/IP?
             </h2>
@@ -118,9 +122,11 @@
 
    <img
     id="webcam"
-    src="/video_feed"
     width="100%"
     height="250">
+    <p id="cameraStatus" class="camera-status" role="status" aria-live="polite">
+        Connecting to camera feed...
+    </p>
 
     <div class="camera-stats">
 
@@ -143,20 +149,7 @@
 
                 <h4>Question Palette</h4>
 
-                <div class="palette-grid">
-
-                    <button class="q-btn active">1</button>
-                    <button class="q-btn">2</button>
-                    <button class="q-btn">3</button>
-                    <button class="q-btn">4</button>
-                    <button class="q-btn">5</button>
-
-                    <button class="q-btn">6</button>
-                    <button class="q-btn">7</button>
-                    <button class="q-btn">8</button>
-                    <button class="q-btn">9</button>
-                    <button class="q-btn">10</button>
-
+                <div class="palette-grid" id="paletteGrid">
                 </div>
 
             </div>
@@ -217,7 +210,7 @@
 
 </div>
 
-<script src="{{ url_for('static', filename='js/exam.js') }}"></script>
+<script src="{{ url_for('static', filename='js/exam.js') }}?v=6"></script>
 
 </body>
 </html>

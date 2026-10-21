@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cloud exam result | ExamGuard AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cloud-exams.css') }}">
+</head>
+<body class="cloud-candidate-page">
+    <main class="candidate-shell">
+        <a class="candidate-brand" href="{{ url_for('cloud_exams.candidate_login', exam_id=exam_id) }}"><span aria-hidden="true">E</span> ExamGuard <strong>AI</strong></a>
+        <section class="candidate-card result-card">
+            <p class="candidate-eyebrow">CLOUD EXAM RESULT</p>
+            {% if error %}
+            <h1>Result unavailable</h1>
+            <p class="cloud-alert cloud-alert-error" role="alert">{{ error }}</p>
+            <a class="candidate-primary-link" href="{{ url_for('cloud_exams.candidate_result', exam_id=exam_id) }}">Try again</a>
+            {% elif result %}
+            <h1>{{ result.exam_title }}</h1>
+            <p class="candidate-intro">Your latest submitted attempt is shown below.</p>
+            <div class="result-score">
+                <strong>{{ result.score }} / {{ result.total_questions }}</strong>
+                <span>{{ "Pass" if result.passed else "Not passed" }}</span>
+            </div>
+            <dl class="candidate-exam-meta">
+                <div><dt>Attempt</dt><dd>{{ result.attempt_number }}</dd></div>
+                <div><dt>Submitted</dt><dd>{{ result.submitted_at }}</dd></div>
+                <div><dt>Published</dt><dd>{{ result.results_published_at }}</dd></div>
+            </dl>
+            {% if attempts_remaining > 0 %}
+            <p class="cloud-status-message">{{ attempts_remaining }} attempt{{ "" if attempts_remaining == 1 else "s" }} remaining.</p>
+            <a class="candidate-primary-link" href="{{ url_for('cloud_exams.candidate_instructions', exam_id=exam_id) }}">Continue to next attempt</a>
+            {% endif %}
+            {% else %}
+            <h1>Submission received</h1>
+            <p class="candidate-intro">Your answers are saved. The administrator has not published results yet.</p>
+            <p class="cloud-status-message">This page will show your score after results are released for this exam.</p>
+            <a class="candidate-primary-link" href="{{ url_for('cloud_exams.candidate_result', exam_id=exam_id) }}">Check for published result</a>
+            {% if attempts_remaining > 0 %}
+            <p class="cloud-status-message">{{ attempts_remaining }} attempt{{ "" if attempts_remaining == 1 else "s" }} remaining.</p>
+            <a class="candidate-secondary-button" href="{{ url_for('cloud_exams.candidate_instructions', exam_id=exam_id) }}">Continue to next attempt</a>
+            {% endif %}
+            {% endif %}
+        </section>
+    </main>
+</body>
+</html>

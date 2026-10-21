@@ -13,6 +13,7 @@ backend/evidence/tab_switch/*.jpg
 # Virtual environment
 
 venv/
+.venv/
 .env
 
 # VS Code
@@ -20,6 +21,7 @@ venv/
 .vscode/settings.json
 temp.jpg
 dataset/Srijan/
+dataset/face_enrollments/
 # ExamGuard runtime files
 backend/monitor_data.json
 
