@@ -66,6 +66,7 @@ python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
 pytweening==1.2.0
 requests==2.34.2
+reportlab==5.0.1
 retina-face==0.0.18
 rich==15.0.0
 setuptools==82.0.1
