@@ -88,8 +88,28 @@
                         required
                     >
 
+                    <video
+                        id="cameraPreview"
+                        class="camera-preview"
+                        autoplay
+                        playsinline
+                        muted
+                        hidden
+                        aria-label="Live candidate camera preview"
+                    ></video>
+
+                    <p
+                        id="cameraStatus"
+                        class="camera-status"
+                        role="status"
+                        aria-live="polite"
+                    >
+                        Start the camera to preview and capture a frame for server verification.
+                        First sign-in may enroll a face for this registration number.
+                    </p>
+
                     <button type="submit">
-                        Verify Identity
+                        Start Camera
                     </button>
 
                 </form>
@@ -104,7 +124,7 @@
     <div class="particle p2"></div>
     <div class="particle p3"></div>
 
-    <script src="{{ url_for('static', filename='js/login.js') }}?v=3"></script>
+    <script src="{{ url_for('static', filename='js/login.js') }}?v=4"></script>
 
 </body>
 

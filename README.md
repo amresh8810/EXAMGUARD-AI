@@ -92,7 +92,8 @@ Before starting an examination, candidates must complete identity verification.
 
 Features:
 
-- Webcam-based face enrollment on the first successful sign-in for a registration number
+- Browser-camera face enrollment on the first successful sign-in for a registration number
+- Candidate previews the camera and submits a captured frame for server-side verification
 - FaceNet512 comparison against that enrollment on subsequent sign-ins
 - Fresh cloud enrollment when no trusted Supabase candidate profile exists; old
   local-only face references are replaced instead of treated as trusted

@@ -11,7 +11,10 @@ code changes; follow the approval rules in
 ### 1. Candidate sign-in and face identity verification
 
 - Candidate enters a full name and registration number.
-- The webcam must detect exactly one face during verification.
+- The candidate grants browser camera access, previews the live feed, and
+  captures a JPEG frame for server-side verification; the server does not try
+  to open a webcam attached to the hosting machine.
+- The submitted frame must contain exactly one face during verification.
 - The first accepted face for a registration number is enrolled; later sign-ins
   compare against that saved face with FaceNet512.
 - Candidate profile details and the face-image object path are stored using

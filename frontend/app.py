@@ -7,6 +7,8 @@ import os
 import json
 import sys
 import sqlite3
+import base64
+import binascii
 import time
 import hmac
 import hashlib
@@ -20,6 +22,7 @@ from html import escape as html_escape
 from functools import wraps
 import cv2
 import numpy as np
+from PIL import Image, UnidentifiedImageError
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib import colors
@@ -84,6 +87,10 @@ app.config.update(
     SESSION_COOKIE_SECURE=os.getenv("SESSION_COOKIE_SECURE", "").lower() == "true",
     PERMANENT_SESSION_LIFETIME=timedelta(hours=24),
 )
+MAX_LOGIN_FRAME_BYTES = 2 * 1024 * 1024
+MAX_LOGIN_FRAME_BASE64_LENGTH = ((MAX_LOGIN_FRAME_BYTES + 2) // 3) * 4
+MAX_LOGIN_FRAME_WIDTH = 1920
+MAX_LOGIN_FRAME_HEIGHT = 1080
 init_db()
 init_admin_review_db()
 app.register_blueprint(create_cloud_exam_blueprint(get_all_questions))
@@ -225,6 +232,39 @@ def _candidate_registration_key(reg_no):
     return hashlib.sha256(
         reg_no.strip().casefold().encode("utf-8")
     ).hexdigest()
+
+
+def _decode_candidate_camera_frame(frame_data):
+    if not isinstance(frame_data, str) or not frame_data:
+        raise ValueError("A camera frame is required.")
+    if len(frame_data) > MAX_LOGIN_FRAME_BASE64_LENGTH:
+        raise ValueError("The camera frame is too large.")
+
+    try:
+        image_data = base64.b64decode(frame_data, validate=True)
+    except (binascii.Error, ValueError) as error:
+        raise ValueError("The camera frame is not valid base64 data.") from error
+
+    if not image_data or len(image_data) > MAX_LOGIN_FRAME_BYTES:
+        raise ValueError("The camera frame is empty or too large.")
+
+    try:
+        with Image.open(io.BytesIO(image_data)) as image:
+            if image.format != "JPEG":
+                raise ValueError("The camera frame must be a JPEG image.")
+            width, height = image.size
+            if (
+                width < 1
+                or height < 1
+                or width > MAX_LOGIN_FRAME_WIDTH
+                or height > MAX_LOGIN_FRAME_HEIGHT
+            ):
+                raise ValueError("The camera frame dimensions are not supported.")
+            rgb_frame = np.asarray(image.convert("RGB"))
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as error:
+        raise ValueError("The camera frame could not be decoded.") from error
+
+    return cv2.cvtColor(rgb_frame, cv2.COLOR_RGB2BGR)
 
 
 def _get_supabase_candidate_profile(registration_key):
@@ -637,6 +677,14 @@ def login():
 @app.route("/verify", methods=["GET", "POST"])
 def verify():
     if request.method == "POST":
+        if (
+            request.content_length is not None
+            and request.content_length > MAX_LOGIN_FRAME_BASE64_LENGTH + 16_384
+        ):
+            return jsonify({
+                "status": "failed",
+                "message": "The camera frame is too large. Please restart the camera and try again."
+            }), 413
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
             return jsonify({
@@ -645,9 +693,11 @@ def verify():
             }), 400
         name = data.get("name")
         reg_no = data.get("reg_no")
+        frame_data = data.get("frame")
     else:
         name = request.args.get("name")
         reg_no = request.args.get("reg_no")
+        frame_data = None
 
     if (
         not isinstance(name, str)
@@ -670,9 +720,20 @@ def verify():
     session.pop("active_exam_id", None)
     app.logger.info("Candidate face verification attempt received.")
 
-    face_found = False
-    captured_frame = None
-    cap = None
+    if not isinstance(frame_data, str) or not frame_data:
+        return jsonify({
+            "status": "failed",
+            "message": "Start the camera and capture a frame before verifying."
+        }), 400
+
+    try:
+        captured_frame = _decode_candidate_camera_frame(frame_data)
+    except ValueError:
+        app.logger.info("Candidate verification received an invalid browser camera frame.")
+        return jsonify({
+            "status": "failed",
+            "message": "The camera frame could not be read. Restart the camera and try again."
+        }), 400
 
     try:
         if not hasattr(cv2, "CascadeClassifier") or not hasattr(cv2, "data"):
@@ -692,54 +753,25 @@ def verify():
                 "message": "Face detection could not start. Please contact the exam administrator."
             }), 503
 
-        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-        if not cap.isOpened():
-            cap.release()
-            cap = cv2.VideoCapture(0)
-
-        if not cap.isOpened():
-            app.logger.warning("Candidate verification could not open the webcam.")
-            return jsonify({
-                "status": "failed",
-                "message": "The camera could not be opened. Close other apps using it, allow camera access, and try again."
-            }), 503
-
-        for _ in range(12):
-            ret, frame = cap.read()
-            if not ret:
-                continue
-            captured_frame = frame
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            faces = face_cascade.detectMultiScale(
-                gray,
-                scaleFactor=1.2,
-                minNeighbors=4
-            )
-            if len(faces) > 1:
-                return jsonify({
-                    "status": "failed",
-                    "message": "Only one face may be visible during verification."
-                }), 403
-            if len(faces) == 1:
-                face_found = True
-                break
+        gray = cv2.cvtColor(captured_frame, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(
+            gray,
+            scaleFactor=1.2,
+            minNeighbors=4
+        )
     except Exception:
         app.logger.exception("Candidate face verification failed.")
         return jsonify({
             "status": "failed",
-            "message": "Camera verification could not be completed. Check camera access and try again."
+            "message": "Face detection could not be completed. Please try again or contact the exam administrator."
         }), 503
-    finally:
-        if cap is not None:
-            cap.release()
 
-    if not face_found:
-        if captured_frame is None:
-            app.logger.warning("The webcam opened but did not provide a frame.")
-            return jsonify({
-                "status": "failed",
-                "message": "The camera did not provide a video frame. Check camera access and try again."
-            }), 503
+    if len(faces) > 1:
+        return jsonify({
+            "status": "failed",
+            "message": "Only one face may be visible during verification."
+        }), 403
+    if len(faces) == 0:
         return jsonify({
             "status": "failed",
             "message": "Face not detected in webcam! Please sit directly in front of the camera with good lighting."
