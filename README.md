@@ -16,12 +16,16 @@ ExamGuard AI is an intelligent online examination proctoring system designed to 
 
 The system helps educational institutions and organizations conduct secure online examinations by automatically monitoring candidate behavior and generating evidence whenever suspicious activity is detected.
 
-## Free Hugging Face Docker Space (demo only)
+## Hugging Face Docker Space (demo only)
 
 The repository includes a Docker setup for trying the app as a Hugging Face
-Docker Space. Free Spaces can sleep while idle, and their container filesystem
-is ephemeral. Treat this as a demo only: it is not evidence that face
-verification or exams will be reliable under production or 200-candidate load.
+Docker Space. Check the current Hugging Face plan requirements before creating
+one: their documentation currently says compute Spaces, including Docker
+Spaces, require a PRO personal plan (or a Team/Enterprise organization), even
+though CPU Basic hardware has no hourly compute charge. Spaces can sleep while
+idle, and their container filesystem is ephemeral. Treat this as a demo only:
+it is not evidence that face verification or exams will be reliable under
+production or 200-candidate load.
 
 1. Create a Space and select **Docker** as its SDK.
 2. Push this repository's `main` branch to the Space's Git repository using
