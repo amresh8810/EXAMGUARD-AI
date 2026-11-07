@@ -1,10 +1,52 @@
-                                                                  ExamGuard AI
+---
+title: ExamGuard AI
+emoji: 🛡️
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
+# ExamGuard AI
 
 ## AI-Powered Online Examination Proctoring System
 
 ExamGuard AI is an intelligent online examination proctoring system designed to monitor candidates during remote assessments and detect suspicious activities in real time. The project combines Computer Vision, Artificial Intelligence, real-time monitoring, evidence collection, analytics, and automated reporting into a unified platform.
 
 The system helps educational institutions and organizations conduct secure online examinations by automatically monitoring candidate behavior and generating evidence whenever suspicious activity is detected.
+
+## Free Hugging Face Docker Space (demo only)
+
+The repository includes a Docker setup for trying the app as a Hugging Face
+Docker Space. Free Spaces can sleep while idle, and their container filesystem
+is ephemeral. Treat this as a demo only: it is not evidence that face
+verification or exams will be reliable under production or 200-candidate load.
+
+1. Create a Space and select **Docker** as its SDK.
+2. Push this repository's `main` branch to the Space's Git repository using
+   your own Hugging Face account. Keep any write token private; do not paste it
+   into chat or store it in this repository.
+3. In Space **Settings**, add runtime secrets for `FLASK_SECRET_KEY`,
+   `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `ADMIN_USERNAME`, and
+   `ADMIN_PASSWORD`. Add `SESSION_COOKIE_SECURE=true` as a variable. Never put
+   secret values in Docker build arguments or source files.
+4. For homepage face verification, configure the Supabase
+   `candidate_profiles` table with
+   [`database/supabase_candidate_profiles.sql`](./database/supabase_candidate_profiles.sql)
+   and create a private `candidate-faces` Storage bucket. For Cloud Exams,
+   separately apply [`database/cloud_exam_schema.sql`](./database/cloud_exam_schema.sql)
+   to the intended Supabase project.
+5. After the Space build finishes, open its HTTPS URL and first test with
+   synthetic candidates and `TEST ONLY` data.
+
+Face frames are sent to the Space server for verification; enrolled face
+images are stored in the configured Supabase project. Do not use real candidate
+biometric data without appropriate consent and access controls. Files written
+to the Space container, including the local SQLite database and downloaded
+model cache, can be lost when it restarts; Cloud Exam records live in Supabase,
+but the shared local question bank and legacy SQLite records are not made
+persistent by this Docker setup.
 
 ## Run locally on Windows
 
