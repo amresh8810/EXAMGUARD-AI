@@ -14,6 +14,7 @@ backend/evidence/tab_switch/*.jpg
 
 venv/
 .venv/
+.venv-local/
 .env
 
 # VS Code

@@ -73,6 +73,10 @@
                     <span class="readiness-icon" aria-hidden="true"></span>
                     <span><strong>Secure candidate session</strong><small>Not checked</small></span>
                 </div>
+                <div class="readiness-item" id="availabilityCheck" data-state="pending">
+                    <span class="readiness-icon" aria-hidden="true"></span>
+                    <span><strong>Assessment availability</strong><small>Not checked</small></span>
+                </div>
                 <div class="readiness-item" id="cameraCheck" data-state="pending">
                     <span class="readiness-icon" aria-hidden="true"></span>
                     <span><strong>Camera live</strong><small>Not checked</small></span>
@@ -115,13 +119,18 @@
         <button id="startExamBtn" type="button" disabled>
             Start Examination
         </button>
+        <p class="published-result-link">
+            <a href="{{ url_for('candidate_published_result') }}">
+                View my latest published result
+            </a>
+        </p>
 
     </div>
 
 </div>
 
 
-<script src="{{ url_for('static', filename='js/instructions.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='js/instructions.js') }}?v=5"></script>
 </body>
 
 </html>

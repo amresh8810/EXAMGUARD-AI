@@ -67,7 +67,22 @@
 
 <div class="container">
 
+    {% if result_available is defined and not result_available %}
+    <h1>Result Not Available Yet</h1>
+    <div class="card" role="status">
+        <h2>Published Result</h2>
+        <p>Candidate: {{ candidate_name }}</p>
+        <p>{{ result_message }}</p>
+    </div>
+    <button class="btn" onclick="window.location.href='{{ url_for('instructions') }}'">
+        Return To Exam Instructions
+    </button>
+    {% else %}
+    {% if result_published %}
+    <h1>Exam Result Published</h1>
+    {% else %}
     <h1>Exam Submitted Successfully</h1>
+    {% endif %}
 
     <div class="card">
 
@@ -75,7 +90,7 @@
 
         <div class="row">
             <span>Candidate</span>
-            <span>Amresh kumar</span>
+            <span>{{ candidate_name }}</span>
         </div>
 
         <div class="row">
@@ -85,9 +100,27 @@
 
         <div class="row">
             <span>Status</span>
-            <span>Completed</span>
+            <span>{{ "Result published" if result_published else "Submitted — awaiting administrator publication" }}</span>
         </div>
 
+    </div>
+
+    {% if result_published %}
+    <div class="card">
+        <h2>Exam Result</h2>
+        <div class="row">
+            <span>Score</span>
+            <span>{{ score }} / {{ total_questions }}</span>
+        </div>
+        <div class="row">
+            <span>Percentage</span>
+            <span>{{ "%.2f"|format(score_percentage|float) }}%</span>
+        </div>
+        <div class="row">
+            <span>Outcome</span>
+            <span>{{ "Pass" if passed else "Fail" }}</span>
+        </div>
+        <p>Passing score: 50%. Each correct answer earns one mark; there is no negative marking.</p>
     </div>
 
     <div class="card">
@@ -115,19 +148,21 @@
         Monitoring Report Generated Successfully
     </h2>
 
-   <button
-    class="btn"
-    onclick="window.location.href='/download_report'"
->
-    Download PDF Report
-</button>
+    <button class="btn" onclick="window.location.href='{{ url_for('download_report', exam_id=report_exam_id) if report_exam_id is defined else url_for('download_report') }}'">
+        Download PDF Report
+    </button>
+    {% else %}
+    <div class="card" role="status">
+        <h2>Result Pending</h2>
+        <p>Your exam has been submitted successfully. The administrator will review and publish your score before it becomes visible here.</p>
+        <p>Refresh this page later to check for the published result.</p>
+    </div>
+    {% endif %}
 
-<button
-    class="btn"
-    onclick="window.location.href='/'"
->
-    Return To Login
-</button>
+    <button class="btn" onclick="window.location.href='{{ url_for('login') }}'">
+        Return To Login
+    </button>
+    {% endif %}
 
 </div>
 

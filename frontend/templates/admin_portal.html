@@ -18,6 +18,8 @@
             <nav class="sidebar-nav" aria-label="Admin navigation">
                 <a class="nav-link active" href="#overview">Overview</a>
                 <a class="nav-link" href="#reports">Exam reports</a>
+                <a class="nav-link" href="{{ url_for('admin_normal_assessment') }}">Normal assessment</a>
+                <a class="nav-link" href="{{ url_for('admin_normal_exam_submissions') }}">Submitted exams &amp; results</a>
                 <a class="nav-link" href="{{ url_for('admin_reports') }}">Report review</a>
                 <a class="nav-link" href="{{ url_for('cloud_exams.admin_index') }}">Cloud exams</a>
                 <a class="nav-link" href="#questions">Questions</a>

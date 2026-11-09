@@ -16,7 +16,11 @@ code changes; follow the approval rules in
   to open a webcam attached to the hosting machine.
 - The submitted frame must contain exactly one face during verification.
 - The first accepted face for a registration number is enrolled; later sign-ins
-  compare against that saved face with FaceNet512.
+  compare against that saved face with FaceNet512 by default.
+- For local evaluation only, `EXAMGUARD_FACE_MATCHER=sface` opts into YuNet/SFace.
+  This mode requires an existing enrollment, does not create or upload face
+  profiles, and uses an uncalibrated example threshold; it is not enabled in
+  production.
 - Candidate profile details and the face-image object path are stored using
   Supabase; the face image is held in the private `candidate-faces` bucket.
 - Verification failures do not create an authenticated candidate session.
@@ -35,8 +39,15 @@ Main files:
 ### 2. Pre-exam readiness gate
 
 - Requires a valid candidate session, live browser camera, one visible face,
-  available questions, and writable autosave storage.
+  open/resumable assessment availability, available questions, and writable
+  autosave storage.
 - Keeps **Start Examination** disabled until all checks pass.
+- Runs independent camera and server checks together, and reports assessment
+  availability, questions, and autosave separately. The one-face diagnostic
+  also runs independently of assessment availability.
+- Normalizes local image contrast before the one-face check to reduce missed
+  detections in uneven lighting, without relaxing the exactly-one-face rule.
+- Keeps exam start blocked until every existing server and camera check passes.
 - Rechecks required conditions before starting and releases the readiness
   camera as the exam opens.
 
@@ -89,13 +100,25 @@ Main files:
 
 ### 5. Results and downloadable reports
 
-- Shows a candidate's exam result and recorded monitoring summary.
-- Supports downloadable PDF reports and evidence review.
+- Saves submitted normal-exam answers and calculated score in the private
+  Supabase `normal_exam_submissions` table.
+- Shows the score, 50% pass/fail outcome, monitoring summary, and downloadable
+  PDF only after an administrator publishes the result.
+- After signing in again, a candidate can open their latest published normal
+  exam result from the instructions page and download its PDF; both lookups are
+  restricted to their verified registration number.
+- Admins can inspect submitted answers and publish each normal-exam result in
+  the administrator portal.
+- Cloud Exams keep their separate result-publication workflow.
 
 Main files:
 
-- `frontend/app.py` (`/result`, `/download_report`, and evidence routes)
+- `frontend/app.py` (`/result`, `/download_report`, normal-exam admin routes,
+  and evidence routes)
 - `frontend/templates/result.html`
+- `frontend/templates/admin_normal_exam_submissions.html`
+- `backend/normal_exam_results.py`
+- `database/normal_exam_submissions.sql`
 - `frontend/templates/evidence.html`
 - `backend/database.py`
 
@@ -118,6 +141,8 @@ Main files:
 - `backend/database.py` (question and report storage)
 - `.env.example` (configuration names; actual secrets belong only in ignored
   `.env`)
+- `frontend/templates/admin_normal_exam_submissions.html` (admin-only
+  submission review and result publication)
 
 ### 7. Admin report filtering and evidence review
 
@@ -174,6 +199,34 @@ Main files:
 - `frontend/templates/admin_portal.html` (additive navigation link)
 - `docs/CLOUD_EXAMS.md` (setup boundaries and roster format)
 
+## 9. Normal exam availability landing page
+
+- Shows candidates whether an administrator has opened the normal exam and
+  whether its question bank contains a valid assessment.
+- Admins can manually open or close new normal-exam attempts from the admin
+  portal. The initial setting is open to preserve existing access.
+- Closed state is enforced by the candidate readiness checks and server-side
+  exam-session creation; already-started attempts can still resume and submit.
+- Sends candidates to the existing sign-in and face-verification flow when the
+  assessment is open and valid; otherwise, it explains why the test is
+  unavailable.
+- This is a manual open/closed control, not a scheduled test calendar. The
+  local database seeds default questions when its question table is empty.
+- Keeps the sign-in page available at `/login`; Cloud Exam access remains a
+  separate invite-based workflow.
+
+Main files:
+
+- `frontend/app.py` (candidate availability, exam-start gate, and admin routes)
+- `backend/normal_exam_availability.py`
+- `database/normal_exam_availability.sql`
+- `frontend/templates/candidate_assessment.html`
+- `frontend/templates/admin_normal_assessment.html`
+- `frontend/static/css/candidate-assessment.css`
+- `frontend/static/js/instructions.js` (preserves in-progress exam recovery)
+- `frontend/templates/admin_portal.html` (admin navigation link)
+- `frontend/templates/login.html`
+
 ## Shared files: ask before changing
 
 These files serve multiple existing flows. A requested feature that requires
@@ -181,8 +234,14 @@ changing one of them needs the user's explicit approval first:
 
 - `frontend/app.py`
 - `backend/database.py`
+- `backend/normal_exam_availability.py`
+- `database/normal_exam_availability.sql`
+- `frontend/templates/candidate_assessment.html`
+- `frontend/templates/admin_normal_assessment.html`
+- `frontend/static/css/candidate-assessment.css`
 - `frontend/static/js/exam.js`
 - `frontend/templates/exam.html`
+- `frontend/templates/result.html`
 - `frontend/static/js/instructions.js`
 - `frontend/templates/instructions.html`
 - `frontend/static/js/login.js`

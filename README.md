@@ -65,6 +65,37 @@ python -m venv .venv
 
 FaceNet model weights may download the first time an enrolled face is checked.
 
+### Feature regression tests
+
+Run the offline regression suite after every code or feature change:
+
+```powershell
+.\.venv-local\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+The suite uses isolated temporary data. GitHub Actions also runs it for every
+push and pull request. See [`docs/TESTING.md`](./docs/TESTING.md) for coverage
+and for the separate manual checks required by camera and live Supabase changes.
+
+#### Experimental local SFace login check
+
+To try the lighter SFace matcher without changing the default FaceNet behavior,
+run the local-only launcher:
+
+```powershell
+.\.venv-local\Scripts\python.exe experiments\run_local_sface_app.py
+```
+
+The launcher binds only to `127.0.0.1`, uses a temporary SQLite copy so the
+original exam database is not changed, and removes that copy when stopped with
+Ctrl+C. SFace mode only verifies an already-enrolled candidate; it will not
+create or upload a new face profile. It reads a saved Supabase face image into
+memory without caching it to disk. The YuNet and SFace models are downloaded to
+the system temporary directory and SHA-256 checked. The comparison uses OpenCV
+Zoo's example cosine threshold; it is not calibrated for ExamGuard and this
+mode is for local evaluation only. Do not enable this experimental mode on
+Render.
+
 ### Supabase candidate enrollment setup
 
 The `candidate-faces` Storage bucket holds private face images; the
@@ -74,6 +105,45 @@ and image object path. In the Supabase SQL Editor, run
 once. Configure `SUPABASE_URL` and a server-side Supabase secret/service-role
 key in the app's `.env`; do not expose that key in browser code. Candidate
 passwords are not collected or stored by this login flow.
+
+### Candidate assessment availability
+
+Admins can manually open or close new attempts for the normal assessment at
+`/admin/normal-assessment`. The candidate home page shows whether the
+assessment is open and whether valid questions are available. When it is open,
+**Start test** takes the candidate to the existing sign-in, face-verification,
+and readiness flow. A closed assessment blocks new attempts at the server as
+well as on the candidate page; attempts already in progress can still resume
+and submit. Cloud Exams use their separate invitation-based access pages and
+are not affected by this switch.
+
+The switch starts open to preserve existing access. With no Supabase client,
+the setting is stored in the local SQLite database. When Supabase is configured,
+apply [`database/normal_exam_availability.sql`](./database/normal_exam_availability.sql)
+to that project before deploying; the setting is then stored in Supabase and
+survives local app restarts. This is a manual toggle, not a scheduled test
+calendar. If the local SQLite database is ephemeral on a hosting platform, use
+the Supabase-backed setting for durable availability.
+
+### Normal exam result review and publication
+
+The normal candidate-login exam stores submitted attempts and their answer
+snapshots in `normal_exam_submissions` in Supabase. Before deploying this
+feature, apply
+[`database/normal_exam_submissions.sql`](./database/normal_exam_submissions.sql)
+to the configured Supabase project. The table is private to the server's
+service-role client; do not grant browser access or expose the service key.
+
+Admins open **Submitted exams & results** in the administrator portal to review
+answers and scores, then publish each result. Candidates see only a submission
+confirmation until publication. Scoring is one mark per correct answer, with
+no negative marking and a fixed 50% pass threshold. This durable result store
+is separate from Render's ephemeral local SQLite database. Cloud Exams remain
+a separate workflow with their own result-publication controls.
+
+Before deployment, let any normal exam started on an older release finish.
+Those in-progress snapshots do not contain the answer key needed for safe
+scoring and cannot be submitted by the new result flow.
 
 ### Separate cloud exams for multiple candidates
 

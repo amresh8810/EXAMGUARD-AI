@@ -272,6 +272,27 @@ button:disabled{
     cursor:not-allowed;
 }
 
+.published-result-link{
+    margin-top:16px;
+    text-align:center;
+}
+
+.published-result-link a{
+    color:#bfdbfe;
+    text-decoration:underline;
+    text-underline-offset:3px;
+}
+
+.published-result-link a:hover{
+    color:#fff;
+}
+
+.published-result-link a:focus-visible{
+    outline:2px solid #93c5fd;
+    outline-offset:4px;
+    border-radius:2px;
+}
+
 button:focus-visible{
     outline:3px solid #93c5fd;
     outline-offset:3px;

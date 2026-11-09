@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Submitted exams | ExamGuard AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+    <style>
+        .submission-details { min-width: 260px; max-width: 620px; }
+        .submission-details summary { color: #2458c6; cursor: pointer; font-weight: 700; }
+        .answer-list { display: grid; gap: 12px; margin: 14px 0 0; padding-left: 22px; }
+        .answer-list li { padding-left: 4px; }
+        .answer-list p { margin: 4px 0; }
+        .answer-correct { color: #167451; font-weight: 700; }
+        .answer-wrong { color: #a52b35; font-weight: 700; }
+        .publish-form { margin: 0; }
+        .nowrap { white-space: nowrap; }
+    </style>
+</head>
+<body class="admin-page">
+    <div class="admin-shell">
+        <aside class="sidebar">
+            <a class="brand" href="{{ url_for('admin') }}">
+                <span class="brand-mark" aria-hidden="true">E</span>
+                <span>ExamGuard <strong>AI</strong></span>
+            </a>
+            <p class="sidebar-label">WORKSPACE</p>
+            <nav class="sidebar-nav" aria-label="Admin navigation">
+                <a class="nav-link" href="{{ url_for('admin') }}">Overview</a>
+                <a class="nav-link" href="{{ url_for('admin_normal_assessment') }}">Normal assessment</a>
+                <a class="nav-link active" href="{{ url_for('admin_normal_exam_submissions') }}" aria-current="page">Submitted exams &amp; results</a>
+                <a class="nav-link" href="{{ url_for('admin_reports') }}">Reports &amp; review</a>
+                <a class="nav-link" href="{{ url_for('cloud_exams.admin_index') }}">Cloud exams</a>
+                <a class="nav-link" href="{{ url_for('evidence') }}">Evidence</a>
+            </nav>
+            <div class="sidebar-footer">
+                <span>Workspace access</span>
+                <strong>Administrator</strong>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <header class="topbar">
+                <div>
+                    <p class="eyebrow">EXAMGUARD AI / ADMIN</p>
+                    <h1>Submitted exams &amp; results</h1>
+                </div>
+                <div class="account-actions">
+                    <span class="admin-identity">
+                        <span class="avatar" aria-hidden="true">{{ admin_username[:1]|upper }}</span>
+                        <span>{{ admin_username }}</span>
+                    </span>
+                    <form method="post" action="{{ url_for('admin_logout') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button class="button button-secondary" type="submit">Sign out</button>
+                    </form>
+                </div>
+            </header>
+
+            <section class="welcome-row">
+                <div>
+                    <h2>Review before releasing results</h2>
+                    <p>Each correct answer is one mark. Passing score is 50%; there is no negative marking.</p>
+                </div>
+            </section>
+
+            {% if published %}
+            <p class="risk-badge risk-badge-low" role="status">Result published. The candidate can now view it.</p>
+            {% endif %}
+
+            <section class="panel" aria-labelledby="submissionsHeading">
+                <div class="section-heading section-heading-wrap">
+                    <div>
+                        <h2 id="submissionsHeading">Normal exam submissions</h2>
+                        <p>{{ submissions|length }} most recent submission(s). Results stay hidden from candidates until published.</p>
+                    </div>
+                </div>
+                {% if submissions %}
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th scope="col">Candidate</th>
+                                <th scope="col">Registration number</th>
+                                <th scope="col">Submitted</th>
+                                <th scope="col">Score</th>
+                                <th scope="col">Outcome</th>
+                                <th scope="col">Submission review</th>
+                                <th scope="col">Result action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for submission in submissions %}
+                            <tr>
+                                <td class="candidate-cell">{{ submission.candidate_name }}</td>
+                                <td>{{ submission.reg_no }}</td>
+                                <td class="nowrap">{{ submission.submitted_at }}</td>
+                                <td class="nowrap">
+                                    {{ submission.score }} / {{ submission.total_questions }}
+                                    ({{ "%.2f"|format(submission.score_percentage|float) }}%)
+                                </td>
+                                <td>
+                                    <span class="risk-badge {{ 'risk-badge-low' if submission.passed else 'risk-badge-high' }}">
+                                        {{ "Pass" if submission.passed else "Fail" }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <details class="submission-details">
+                                        <summary>Review answers</summary>
+                                        <ol class="answer-list">
+                                            {% for question in submission.question_snapshot %}
+                                            {% set answer = submission.answers[loop.index0] %}
+                                            {% set options = ["A", "B", "C", "D"] %}
+                                            <li>
+                                                <p><strong>{{ question.question }}</strong></p>
+                                                <p>Your answer:
+                                                    {% if answer is none %}
+                                                    <span>Unanswered</span>
+                                                    {% else %}
+                                                    <span class="{{ 'answer-correct' if answer == question.correct else 'answer-wrong' }}">
+                                                        {{ options[answer] }} — {{ question.options[answer] }}
+                                                    </span>
+                                                    {% endif %}
+                                                </p>
+                                                <p class="answer-correct">
+                                                    Correct: {{ options[question.correct] }} — {{ question.options[question.correct] }}
+                                                </p>
+                                            </li>
+                                            {% endfor %}
+                                        </ol>
+                                    </details>
+                                </td>
+                                <td>
+                                    {% if submission.result_status == "pending" %}
+                                    <form class="publish-form" method="post" action="{{ url_for('admin_publish_normal_exam_result', exam_id=submission.exam_id) }}" onsubmit="return confirm('Publish this result to the candidate?');">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <button class="button button-primary" type="submit">Publish result</button>
+                                    </form>
+                                    {% else %}
+                                    <span class="risk-badge risk-badge-low">Published</span>
+                                    <p class="muted-detail">By {{ submission.published_by }}</p>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="empty-state">No normal exam submissions yet.</p>
+                {% endif %}
+            </section>
+        </main>
+    </div>
+</body>
+</html>

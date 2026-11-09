@@ -17,6 +17,8 @@
             <p class="sidebar-label">WORKSPACE</p>
             <nav class="sidebar-nav" aria-label="Admin navigation">
                 <a class="nav-link" href="{{ url_for('admin') }}">Overview</a>
+                <a class="nav-link" href="{{ url_for('admin_normal_assessment') }}">Normal assessment</a>
+                <a class="nav-link" href="{{ url_for('admin_normal_exam_submissions') }}">Submitted exams &amp; results</a>
                 <a class="nav-link active" href="{{ url_for('admin_reports') }}" aria-current="page">Reports &amp; review</a>
                 <a class="nav-link" href="{{ url_for('admin') }}#questions">Questions</a>
                 <a class="nav-link" href="{{ url_for('evidence') }}">Evidence</a>

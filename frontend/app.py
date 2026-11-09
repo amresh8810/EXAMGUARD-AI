@@ -17,7 +17,7 @@ import tempfile
 import threading
 import csv
 import io
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from html import escape as html_escape
 from functools import wraps
 import cv2
@@ -59,6 +59,20 @@ from backend.admin_reviews import (
     record_proctoring_event,
     register_unassigned_evidence,
     update_evidence_review,
+)
+from backend.normal_exam_results import (
+    NormalExamResultError,
+    calculate_result,
+    get_latest_published_submission,
+    get_submission,
+    list_submissions,
+    publish_submission,
+    save_submission,
+)
+from backend.normal_exam_availability import (
+    NormalExamAvailabilityError,
+    get_availability,
+    set_availability,
 )
 from backend.cloud_exam_routes import create_cloud_exam_blueprint
 
@@ -278,7 +292,12 @@ def _get_supabase_candidate_profile(registration_key):
     return response.data[0] if response.data else None
 
 
-def _download_supabase_face(profile, registration_key, reference_path):
+def _download_supabase_face(
+    profile,
+    registration_key,
+    reference_path,
+    cache_to_disk=True,
+):
     image_path = profile.get("face_image_path")
     expected_prefix = f"face_enrollments/{registration_key}/"
     if not isinstance(image_path, str) or not image_path.startswith(expected_prefix):
@@ -287,6 +306,15 @@ def _download_supabase_face(profile, registration_key, reference_path):
     image_data = supabase.storage.from_("candidate-faces").download(image_path)
     if not isinstance(image_data, (bytes, bytearray)) or not image_data:
         raise OSError("Supabase returned an empty candidate face image.")
+
+    if not cache_to_disk:
+        image = cv2.imdecode(
+            np.frombuffer(image_data, dtype=np.uint8),
+            cv2.IMREAD_COLOR,
+        )
+        if image is None:
+            raise ValueError("Supabase returned an invalid candidate face image.")
+        return image
 
     directory = os.path.dirname(reference_path)
     os.makedirs(directory, exist_ok=True)
@@ -394,6 +422,14 @@ def _same_candidate_name(first_name, second_name):
 
 
 def _face_matches_reference(frame, reference_path):
+    matcher = os.getenv("EXAMGUARD_FACE_MATCHER", "facenet").strip().casefold()
+    if matcher == "sface":
+        from backend.sface_matcher import sface_matches
+
+        return sface_matches(frame, reference_path)
+    if matcher != "facenet":
+        raise ValueError("EXAMGUARD_FACE_MATCHER must be 'facenet' or 'sface'.")
+
     from deepface import DeepFace
 
     verification = DeepFace.verify(
@@ -432,6 +468,7 @@ def _prepare_exam_questions(questions):
 
     prepared = []
     for question in questions:
+        correct = question.get("correct") if isinstance(question, dict) else None
         if (
             not isinstance(question, dict)
             or "id" not in question
@@ -443,12 +480,16 @@ def _prepare_exam_questions(questions):
                 not isinstance(option, str) or not option.strip()
                 for option in question["options"]
             )
+            or isinstance(correct, bool)
+            or not isinstance(correct, int)
+            or not 0 <= correct < 4
         ):
             return None
         prepared.append({
             "id": question["id"],
             "question": question["question"],
             "options": question["options"],
+            "correct": correct,
         })
     return prepared
 
@@ -613,6 +654,36 @@ def _count_exam_evidence():
 def _complete_exam(exam_record, progress):
     faces, violations = _read_exam_monitoring_stats()
     evidence_count = _count_exam_evidence()
+    result = calculate_result(
+        exam_record["questions"],
+        progress["answers"],
+    )
+    if supabase is None:
+        raise NormalExamResultError(
+            "Supabase is not configured; the exam result cannot be stored safely."
+        )
+
+    submitted_at = datetime.now(timezone.utc).isoformat()
+    save_submission(
+        supabase,
+        {
+            "exam_id": exam_record["exam_id"],
+            "candidate_name": exam_record["candidate_name"],
+            "reg_no": exam_record["reg_no"],
+            "registration_key": _candidate_registration_key(
+                exam_record["reg_no"]
+            ),
+            "question_snapshot": exam_record["questions"],
+            "answers": progress["answers"],
+            **result,
+            "result_status": "pending",
+            "submitted_at": submitted_at,
+            "face_count": faces,
+            "violations": violations,
+            "evidence_count": evidence_count,
+        },
+    )
+
     completed = complete_exam_session(
         exam_record["exam_id"],
         progress["answers"],
@@ -669,7 +740,107 @@ def _exam_session_response(exam_record, resume_token, progress=None):
     }
 
 
+def _candidate_has_in_progress_exam(resume_token=None):
+    candidate_name = session.get("candidate_name")
+    reg_no = session.get("reg_no")
+    if not candidate_name or not reg_no:
+        return False
+
+    if isinstance(resume_token, str) and 0 < len(resume_token) <= 128:
+        exam_record = get_exam_session_by_token_hash(
+            _hash_resume_token(resume_token)
+        )
+        if (
+            exam_record
+            and exam_record["status"] == "in_progress"
+            and hmac.compare_digest(exam_record["candidate_name"], candidate_name)
+            and hmac.compare_digest(exam_record["reg_no"], reg_no)
+        ):
+            return True
+
+    exam_id = session.get("active_exam_id")
+    if not exam_id:
+        return False
+    exam_record = get_exam_session(exam_id)
+    return bool(
+        exam_record
+        and exam_record["status"] == "in_progress"
+        and hmac.compare_digest(exam_record["candidate_name"], candidate_name)
+        and hmac.compare_digest(exam_record["reg_no"], reg_no)
+    )
+
+
+def _normal_exam_closed_response(resume_token=None):
+    try:
+        availability = get_availability(supabase)
+    except NormalExamAvailabilityError:
+        app.logger.exception("Could not check normal exam availability.")
+        return jsonify({
+            "error": (
+                "Assessment availability could not be checked. Please retry "
+                "or contact the exam administrator."
+            ),
+            "check": "availability",
+        }), 503
+
+    if not availability["is_open"]:
+        try:
+            if _candidate_has_in_progress_exam(resume_token):
+                return None
+        except sqlite3.Error:
+            app.logger.exception("Could not check the candidate's active exam.")
+            return jsonify({
+                "error": "The active exam session could not be checked.",
+                "check": "session",
+            }), 503
+        return jsonify({
+            "error": "The normal assessment is currently closed.",
+            "check": "availability",
+        }), 423
+    return None
+
+
 @app.route("/")
+def candidate_assessment():
+    try:
+        availability = get_availability(supabase)
+    except NormalExamAvailabilityError:
+        app.logger.exception(
+            "Could not load normal exam availability for the candidate landing page."
+        )
+        return render_template(
+            "candidate_assessment.html",
+            availability="error",
+            question_count=0,
+        ), 503
+
+    if not availability["is_open"]:
+        return render_template(
+            "candidate_assessment.html",
+            availability="closed",
+            question_count=0,
+        )
+
+    try:
+        exam_questions = _prepare_exam_questions(get_all_questions())
+    except Exception:
+        app.logger.exception(
+            "Could not load the question bank for the candidate landing page."
+        )
+        return render_template(
+            "candidate_assessment.html",
+            availability="error",
+            question_count=0,
+        ), 503
+
+    return render_template(
+        "candidate_assessment.html",
+        availability="ready" if exam_questions else "unavailable",
+        question_count=len(exam_questions or []),
+    )
+
+
+@app.route("/login")
 def login():
     return render_template("login.html")
 
@@ -779,6 +950,10 @@ def verify():
 
     reference_path = _candidate_face_reference_path(reg_no)
     registration_key = _candidate_registration_key(reg_no)
+    sface_test_mode = (
+        os.getenv("EXAMGUARD_FACE_MATCHER", "facenet").strip().casefold()
+        == "sface"
+    )
     enrolled_now = False
     candidate_name = name
 
@@ -804,12 +979,21 @@ def verify():
                 }), 403
 
             try:
-                _download_supabase_face(
-                    cloud_profile,
-                    registration_key,
-                    reference_path,
-                )
-                if not _face_matches_reference(captured_frame, reference_path):
+                if sface_test_mode:
+                    reference_image = _download_supabase_face(
+                        cloud_profile,
+                        registration_key,
+                        reference_path,
+                        cache_to_disk=False,
+                    )
+                else:
+                    _download_supabase_face(
+                        cloud_profile,
+                        registration_key,
+                        reference_path,
+                    )
+                    reference_image = reference_path
+                if not _face_matches_reference(captured_frame, reference_image):
                     app.logger.warning(
                         "Face mismatch for registration number ending in %s.",
                         reg_no[-4:],
@@ -835,6 +1019,12 @@ def verify():
                 }), 503
             candidate_name = stored_name
         else:
+            if sface_test_mode:
+                return jsonify({
+                    "status": "failed",
+                    "message": "Local SFace test mode only checks an existing enrollment; it does not create or upload face profiles."
+                }), 409
+
             try:
                 if os.path.exists(reference_path):
                     app.logger.info(
@@ -880,12 +1070,21 @@ def verify():
                         "message": "The name does not match the profile registered for this Registration Number."
                     }), 403
                 try:
-                    _download_supabase_face(
-                        cloud_profile,
-                        registration_key,
-                        reference_path,
-                    )
-                    if not _face_matches_reference(captured_frame, reference_path):
+                    if sface_test_mode:
+                        reference_image = _download_supabase_face(
+                            cloud_profile,
+                            registration_key,
+                            reference_path,
+                            cache_to_disk=False,
+                        )
+                    else:
+                        _download_supabase_face(
+                            cloud_profile,
+                            registration_key,
+                            reference_path,
+                        )
+                        reference_image = reference_path
+                    if not _face_matches_reference(captured_frame, reference_image):
                         return jsonify({
                             "status": "failed",
                             "message": "This face does not match the face enrolled for this Registration Number."
@@ -925,6 +1124,12 @@ def verify():
                     "message": "Face identity matching could not be completed. Please try again or contact the exam administrator."
                 }), 503
         else:
+            if sface_test_mode:
+                return jsonify({
+                    "status": "failed",
+                    "message": "Local SFace test mode only checks an existing enrollment; it does not create or upload face profiles."
+                }), 409
+
             try:
                 os.makedirs(os.path.dirname(reference_path), exist_ok=True)
                 encoded, image_data = cv2.imencode(".jpg", captured_frame)
@@ -987,22 +1192,29 @@ def exam_readiness():
             "check": "candidate_session",
         }), 401
 
+    data = request.get_json(silent=True)
+    resume_token = data.get("resume_token") if isinstance(data, dict) else None
+    availability_response = _normal_exam_closed_response(resume_token)
+    availability_payload = None
+    availability_status = None
+    if availability_response is not None:
+        availability_response_body, availability_status = availability_response
+        availability_payload = availability_response_body.get_json()
+
+    question_error = None
+    exam_questions = []
     try:
         questions = get_all_questions()
     except Exception:
         app.logger.exception("Could not load the question bank for the readiness check.")
-        return jsonify({
-            "error": "The question bank could not be checked. Please try again.",
-            "check": "questions",
-        }), 503
-
-    exam_questions = _prepare_exam_questions(questions)
-    if not exam_questions:
+        question_error = "The question bank could not be checked. Please try again."
+    else:
+        exam_questions = _prepare_exam_questions(questions)
+    if question_error is None and not exam_questions:
         app.logger.error("The question bank is empty or contains invalid questions.")
-        return jsonify({
-            "error": "No valid exam questions are available. Contact the administrator.",
-            "check": "questions",
-        }), 503
+        question_error = (
+            "No valid exam questions are available. Contact the administrator."
+        )
 
     probe_exam_id = f"readiness-{secrets.token_urlsafe(18)}"
     probe_token_hash = _hash_resume_token(secrets.token_urlsafe(32))
@@ -1013,6 +1225,7 @@ def exam_readiness():
         "options": ["A", "B", "C", "D"],
     }]
     probe_conn = None
+    autosave_error = None
     try:
         probe_conn = sqlite3.connect(DB_NAME, timeout=5)
         probe_conn.execute("BEGIN IMMEDIATE")
@@ -1061,23 +1274,53 @@ def exam_readiness():
         probe_conn.rollback()
     except sqlite3.Error:
         app.logger.exception("The exam autosave readiness check failed.")
-        return jsonify({
-            "error": "Answer autosave is not ready. Please retry or contact the administrator.",
-            "check": "autosave",
-            "question_count": len(questions),
-        }), 503
+        autosave_error = (
+            "Answer autosave is not ready. Please retry or contact the administrator."
+        )
     finally:
         if probe_conn is not None:
             probe_conn.close()
 
+    checks = {
+        "candidate_session": True,
+        "availability": availability_response is None,
+        "questions": question_error is None,
+        "question_count": len(exam_questions),
+        "autosave": autosave_error is None,
+    }
+    errors = {}
+    if availability_payload:
+        errors["availability"] = availability_payload.get("error")
+    if question_error:
+        errors["questions"] = question_error
+    if autosave_error:
+        errors["autosave"] = autosave_error
+
+    if availability_response is not None:
+        return jsonify({
+            **availability_payload,
+            "checks": checks,
+            "errors": errors,
+        }), availability_status
+    if question_error:
+        return jsonify({
+            "error": question_error,
+            "check": "questions",
+            "checks": checks,
+            "errors": errors,
+        }), 503
+    if autosave_error:
+        return jsonify({
+            "error": autosave_error,
+            "check": "autosave",
+            "checks": checks,
+            "errors": errors,
+        }), 503
+
     return jsonify({
         "status": "ready",
-        "checks": {
-            "candidate_session": True,
-            "questions": True,
-            "question_count": len(exam_questions),
-            "autosave": True,
-        },
+        "checks": checks,
+        "errors": errors,
     })
 
 
@@ -1110,6 +1353,10 @@ def exam_readiness_face():
         if face_cascade.empty():
             raise OSError("OpenCV could not load its face detector.")
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = cv2.createCLAHE(
+            clipLimit=2.0,
+            tileGridSize=(8, 8),
+        ).apply(gray)
         faces = face_cascade.detectMultiScale(
             gray,
             scaleFactor=1.2,
@@ -1185,6 +1432,10 @@ def exam_session():
                 "error": "Sign in as a candidate before starting an exam."
             }), 401
 
+        gate_response = _normal_exam_closed_response()
+        if gate_response is not None:
+            return gate_response
+
         try:
             exam_questions = _prepare_exam_questions(get_all_questions())
         except Exception:
@@ -1247,10 +1498,19 @@ def exam_session():
         return jsonify(response_data)
 
     if exam_record["deadline_at"] <= time.time():
-        completed = _complete_exam(
-            exam_record,
-            _exam_progress_from_record(exam_record)
-        )
+        try:
+            completed = _complete_exam(
+                exam_record,
+                _exam_progress_from_record(exam_record)
+            )
+        except NormalExamResultError:
+            app.logger.exception(
+                "Could not durably submit expired exam %s.",
+                exam_record["exam_id"],
+            )
+            return jsonify({
+                "error": "The result could not be saved to Supabase. Your exam is still pending submission; contact the administrator or retry."
+            }), 503
         response_data = _exam_session_response(completed, resume_token)
         response_data["submission_reason"] = "time_expired"
         return jsonify(response_data)
@@ -1302,7 +1562,16 @@ def autosave_exam():
         return jsonify({"error": "The autosaved exam progress is invalid"}), 400
 
     if exam_record["deadline_at"] <= time.time():
-        completed = _complete_exam(exam_record, progress)
+        try:
+            completed = _complete_exam(exam_record, progress)
+        except NormalExamResultError:
+            app.logger.exception(
+                "Could not durably submit expired exam %s.",
+                exam_record["exam_id"],
+            )
+            return jsonify({
+                "error": "The result could not be saved to Supabase. Your exam is still pending submission; retry when the connection is restored."
+            }), 503
         return jsonify({
             "status": "submitted",
             "submission_reason": "time_expired",
@@ -1320,7 +1589,16 @@ def autosave_exam():
         if latest and latest["status"] == "submitted":
             return jsonify({"status": "submitted"})
         if latest and latest["deadline_at"] <= time.time():
-            _complete_exam(latest, progress)
+            try:
+                _complete_exam(latest, progress)
+            except NormalExamResultError:
+                app.logger.exception(
+                    "Could not durably submit expired exam %s.",
+                    latest["exam_id"],
+                )
+                return jsonify({
+                    "error": "The result could not be saved to Supabase. Your exam is still pending submission; retry when the connection is restored."
+                }), 503
             return jsonify({
                 "status": "submitted",
                 "submission_reason": "time_expired",
@@ -1357,7 +1635,16 @@ def submit_exam_session():
     if exam_record["deadline_at"] <= time.time():
         reason = "time_expired"
 
-    completed = _complete_exam(exam_record, progress)
+    try:
+        completed = _complete_exam(exam_record, progress)
+    except NormalExamResultError:
+        app.logger.exception(
+            "Could not durably submit exam %s.",
+            exam_record["exam_id"],
+        )
+        return jsonify({
+            "error": "The exam could not be saved to Supabase, so it has not been submitted. Please retry."
+        }), 503
     return jsonify({
         "status": "submitted",
         "submission_reason": reason,
@@ -1367,48 +1654,142 @@ def submit_exam_session():
 
 @app.route("/result")
 def result():
-
     exam_record = get_exam_session(session.get("active_exam_id", ""))
-    if exam_record and exam_record["status"] == "in_progress":
-        if exam_record["deadline_at"] > time.time():
-            return redirect(url_for("exam"))
-        exam_record = _complete_exam(
-            exam_record,
-            _exam_progress_from_record(exam_record)
+    if not exam_record:
+        return (
+            "No submitted exam is available for this candidate session.",
+            404,
         )
 
-    if exam_record and exam_record["status"] == "submitted":
-        faces = exam_record["face_count"] or 0
-        violations = exam_record["violations"] or 0
-        evidence_count = exam_record["evidence_count"] or 0
-    else:
-        faces, violations = _read_exam_monitoring_stats()
-        evidence_count = _count_exam_evidence()
+    if exam_record["status"] == "in_progress":
+        if exam_record["deadline_at"] > time.time():
+            return redirect(url_for("exam"))
+        try:
+            exam_record = _complete_exam(
+                exam_record,
+                _exam_progress_from_record(exam_record)
+            )
+        except NormalExamResultError:
+            app.logger.exception(
+                "Could not durably submit expired exam %s.",
+                exam_record["exam_id"],
+            )
+            return (
+                "The exam could not be saved to Supabase, so it has not been submitted. Please retry.",
+                503,
+            )
 
- #   save_report(
-  # "Srijan Akshit",
-  # faces,
-  #  violations,
-  #  evidence_count
-#)
-   
-    candidate_name = session.get("candidate_name", "Candidate")
+    if exam_record["status"] != "submitted":
+        return "The exam has not been submitted.", 409
+
+    try:
+        submission = get_submission(
+            supabase,
+            exam_record["exam_id"],
+            _candidate_registration_key(session.get("reg_no", "")),
+        )
+    except NormalExamResultError:
+        app.logger.exception(
+            "Could not load the durable result for exam %s.",
+            exam_record["exam_id"],
+        )
+        return (
+            "The result service is unavailable. Please contact the administrator.",
+            503,
+        )
+    if submission is None:
+        return (
+            "The submitted result could not be found for this candidate.",
+            404,
+        )
+
+    result_published = submission["result_status"] == "published"
 
     return render_template(
         "result.html",
-        candidate_name=candidate_name,
-        faces=faces,
-        violations=violations,
-        evidence_count=evidence_count
+        candidate_name=submission["candidate_name"],
+        result_published=result_published,
+        score=submission["score"] if result_published else None,
+        total_questions=(
+            submission["total_questions"] if result_published else None
+        ),
+        score_percentage=(
+            submission["score_percentage"] if result_published else None
+        ),
+        passed=submission["passed"] if result_published else None,
+        faces=submission["face_count"] if result_published else None,
+        violations=submission["violations"] if result_published else None,
+        evidence_count=(
+            submission["evidence_count"] if result_published else None
+        ),
     )
+
+
+@app.route("/candidate/published-result")
+def candidate_published_result():
+    candidate_name = session.get("candidate_name")
+    reg_no = session.get("reg_no")
+    if not isinstance(candidate_name, str) or not isinstance(reg_no, str):
+        return redirect(url_for("login"))
+
+    try:
+        submission = get_latest_published_submission(
+            supabase,
+            _candidate_registration_key(reg_no),
+        )
+    except NormalExamResultError:
+        app.logger.exception(
+            "Could not load the latest published result for the signed-in candidate."
+        )
+        return (
+            "Published results are temporarily unavailable. Please try again.",
+            503,
+        )
+
+    if submission is None:
+        return render_template(
+            "result.html",
+            result_available=False,
+            candidate_name=candidate_name,
+            result_message=(
+                "No result has been published for this candidate yet. "
+                "Please check again after your administrator publishes it."
+            ),
+        )
+
+    return render_template(
+        "result.html",
+        candidate_name=submission["candidate_name"],
+        result_published=True,
+        score=submission["score"],
+        total_questions=submission["total_questions"],
+        score_percentage=submission["score_percentage"],
+        passed=submission["passed"],
+        faces=submission["face_count"],
+        violations=submission["violations"],
+        evidence_count=submission["evidence_count"],
+        report_exam_id=submission["exam_id"],
+    )
+
+
 @app.route("/submit_exam")
 def submit_exam():
     exam_record = get_exam_session(session.get("active_exam_id", ""))
     if exam_record and exam_record["status"] == "in_progress":
-        _complete_exam(
-            exam_record,
-            _exam_progress_from_record(exam_record)
-        )
+        try:
+            _complete_exam(
+                exam_record,
+                _exam_progress_from_record(exam_record)
+            )
+        except NormalExamResultError:
+            app.logger.exception(
+                "Could not durably submit exam %s.",
+                exam_record["exam_id"],
+            )
+            return (
+                "The exam could not be saved to Supabase, so it has not been submitted. Please retry.",
+                503,
+            )
     return redirect("/result")
 
 
@@ -1696,17 +2077,59 @@ def evidence_image(filename):
     )
 @app.route("/download_report")
 def download_report():
-
-    candidate_name = session.get("candidate_name", "Candidate")
-    exam_record = get_exam_session(session.get("active_exam_id", ""))
-    if exam_record and exam_record["status"] == "submitted":
-        candidate_name = exam_record["candidate_name"]
-        faces = exam_record["face_count"] or 0
-        violations = exam_record["violations"] or 0
-        evidence_count = exam_record["evidence_count"] or 0
+    requested_exam_id = request.args.get("exam_id")
+    if requested_exam_id is not None:
+        candidate_name = session.get("candidate_name")
+        reg_no = session.get("reg_no")
+        if (
+            not isinstance(candidate_name, str)
+            or not isinstance(reg_no, str)
+            or not requested_exam_id.strip()
+            or len(requested_exam_id) > 128
+        ):
+            return redirect(url_for("login"))
+        exam_id = requested_exam_id.strip()
+        try:
+            submission = get_submission(
+                supabase,
+                exam_id,
+                _candidate_registration_key(reg_no),
+            )
+        except NormalExamResultError:
+            app.logger.exception(
+                "Could not load the durable report for the signed-in candidate."
+            )
+            return (
+                "The result service is unavailable. Please contact the administrator.",
+                503,
+            )
+        if submission is None:
+            return "The submitted result was not found for this candidate.", 404
+        if submission["result_status"] != "published":
+            return "This exam result has not been published.", 403
     else:
-        faces, violations = _read_exam_monitoring_stats()
-        evidence_count = _count_exam_evidence()
+        exam_record = get_exam_session(session.get("active_exam_id", ""))
+        if not exam_record or exam_record["status"] != "submitted":
+            return redirect(url_for("result"))
+        try:
+            submission = get_submission(
+                supabase,
+                exam_record["exam_id"],
+                _candidate_registration_key(session.get("reg_no", "")),
+            )
+        except NormalExamResultError:
+            app.logger.exception(
+                "Could not load the durable report for exam %s.",
+                exam_record["exam_id"],
+            )
+            return (
+                "The result service is unavailable. Please contact the administrator.",
+                503,
+            )
+    if submission is None:
+        return "The submitted result was not found for this candidate.", 404
+    if submission["result_status"] != "published":
+        return redirect(url_for("result"))
 
     pdf_file = os.path.join(BASE_DIR, "exam_report.pdf")
 
@@ -1721,16 +2144,25 @@ def download_report():
 
         Spacer(1, 20),
 
-        Paragraph(f"Candidate: {candidate_name}",
+        Paragraph(f"Candidate: {submission['candidate_name']}",
                   styles["Normal"]),
 
-        Paragraph(f"Final Face Count: {faces}",
+        Paragraph(
+            f"Score: {submission['score']} / {submission['total_questions']} "
+            f"({submission['score_percentage']}%)",
+            styles["Normal"],
+        ),
+
+        Paragraph(f"Result: {'Pass' if submission['passed'] else 'Fail'}",
                   styles["Normal"]),
 
-        Paragraph(f"Total Violations: {violations}",
+        Paragraph(f"Final Face Count: {submission['face_count']}",
                   styles["Normal"]),
 
-        Paragraph(f"Evidence Captured: {evidence_count}",
+        Paragraph(f"Total Violations: {submission['violations']}",
+                  styles["Normal"]),
+
+        Paragraph(f"Evidence Captured: {submission['evidence_count']}",
                   styles["Normal"]),
 
         Spacer(1, 20),
@@ -1739,9 +2171,6 @@ def download_report():
                   styles["Heading2"])
 
     ]
-    print("PDF Faces =", faces)
-    print("PDF Violations =", violations)
-    print("PDF Evidence =", evidence_count)
     doc.build(content)
 
     return send_file(
@@ -1901,6 +2330,53 @@ def admin():
     )
 
 
+@app.route("/admin/normal-assessment")
+@admin_required
+def admin_normal_assessment():
+    try:
+        availability = get_availability(supabase)
+    except NormalExamAvailabilityError as error:
+        app.logger.exception("Could not load normal exam availability for admin.")
+        return render_template(
+            "admin_normal_assessment.html",
+            availability=None,
+            error=str(error),
+            updated=False,
+            csrf_token=session["admin_csrf_token"],
+            admin_username=session.get("admin_username", "Admin"),
+        ), 503
+
+    return render_template(
+        "admin_normal_assessment.html",
+        availability=availability,
+        error=None,
+        updated=request.args.get("updated") == "1",
+        csrf_token=session["admin_csrf_token"],
+        admin_username=session.get("admin_username", "Admin"),
+    )
+
+
+@app.route("/admin/normal-assessment/status", methods=["POST"])
+@admin_required
+@admin_csrf_required
+def admin_set_normal_assessment_status():
+    requested_status = request.form.get("is_open")
+    if requested_status not in {"true", "false"}:
+        return "Select whether the normal assessment should be open or closed.", 400
+
+    try:
+        set_availability(
+            supabase,
+            requested_status == "true",
+            session.get("admin_username", "Admin"),
+        )
+    except NormalExamAvailabilityError as error:
+        app.logger.exception("Could not update normal exam availability.")
+        return str(error), 503
+
+    return redirect(url_for("admin_normal_assessment", updated="1"))
+
+
 @app.route("/admin/reports")
 @admin_required
 def admin_reports():
@@ -1920,6 +2396,50 @@ def admin_reports():
         csrf_token=session["admin_csrf_token"],
         admin_username=session.get("admin_username", "Admin"),
     )
+
+
+@app.route("/admin/submissions")
+@admin_required
+def admin_normal_exam_submissions():
+    try:
+        submissions = list_submissions(supabase)
+    except NormalExamResultError:
+        app.logger.exception("Could not load normal exam submissions from Supabase.")
+        return (
+            "Submitted exam results are unavailable. Confirm that "
+            "database/normal_exam_submissions.sql has been applied to Supabase.",
+            503,
+        )
+
+    return render_template(
+        "admin_normal_exam_submissions.html",
+        submissions=submissions,
+        csrf_token=session["admin_csrf_token"],
+        admin_username=session.get("admin_username", "Admin"),
+        published=request.args.get("published") == "1",
+    )
+
+
+@app.route(
+    "/admin/submissions/<exam_id>/publish",
+    methods=["POST"],
+)
+@admin_required
+@admin_csrf_required
+def admin_publish_normal_exam_result(exam_id):
+    try:
+        publish_submission(
+            supabase,
+            exam_id,
+            session.get("admin_username", "Admin"),
+        )
+    except NormalExamResultError as error:
+        app.logger.exception(
+            "Could not publish result for exam %s.",
+            exam_id,
+        )
+        return str(error), 503
+    return redirect(url_for("admin_normal_exam_submissions", published="1"))
 
 
 def _filtered_admin_reports():

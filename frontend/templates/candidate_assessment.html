@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Check normal assessment availability and begin your ExamGuard AI test.">
+    <title>Assessment | ExamGuard AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/candidate-assessment.css') }}">
+</head>
+<body>
+    <a class="skip-link" href="#main">Skip to assessment</a>
+    <div class="page-shell">
+        <header class="site-header">
+            <a class="brand" href="{{ url_for('candidate_assessment') }}" aria-label="ExamGuard AI assessment home">
+                <span class="brand-mark" aria-hidden="true">E</span>
+                <span>EXAMGUARD <strong>AI</strong></span>
+            </a>
+            <span class="header-label">Candidate portal</span>
+        </header>
+
+        <main class="main-content" id="main">
+            <section class="intro" aria-labelledby="page-title">
+                <p class="eyebrow">NORMAL ASSESSMENT</p>
+                <h1 id="page-title">Your next test starts here.</h1>
+                <p class="intro-copy">
+                    Check the assessment status, then continue when the test is available.
+                    Sign-in and camera readiness checks happen before the exam begins.
+                </p>
+                <div class="process-note">
+                    <span class="process-marker" aria-hidden="true">1</span>
+                    <p><strong>First, check availability.</strong><br>Then verify your identity and complete the exam readiness steps.</p>
+                </div>
+            </section>
+
+            <section class="status-card" aria-labelledby="status-title">
+                {% if availability == "ready" %}
+                <div class="status-label status-label-ready">
+                    <span class="status-dot" aria-hidden="true"></span>
+                    Assessment available
+                </div>
+                <h2 id="status-title">You can start the test</h2>
+                <p class="status-copy">
+                    {{ question_count }} valid question{% if question_count == 1 %} is{% else %}s are{% endif %}
+                    ready in the normal assessment.
+                </p>
+                <a class="primary-button" href="{{ url_for('login') }}">
+                    Start test
+                    <span aria-hidden="true">→</span>
+                </a>
+                <p class="card-footnote">Have your registered name and registration number ready.</p>
+                {% elif availability == "closed" %}
+                <div class="status-label status-label-waiting">
+                    <span class="status-dot" aria-hidden="true"></span>
+                    Assessment closed
+                </div>
+                <h2 id="status-title">No test is open right now</h2>
+                <p class="status-copy">
+                    The exam administrator has closed this assessment. Please check back later.
+                </p>
+                <a class="secondary-button" href="{{ url_for('candidate_assessment') }}">Check again</a>
+                {% elif availability == "unavailable" %}
+                <div class="status-label status-label-waiting">
+                    <span class="status-dot" aria-hidden="true"></span>
+                    Not available
+                </div>
+                <h2 id="status-title">No assessment right now</h2>
+                <p class="status-copy">
+                    There are no valid normal-exam questions available at the moment.
+                    Please check back later or contact your exam administrator.
+                </p>
+                <a class="secondary-button" href="{{ url_for('candidate_assessment') }}">Check again</a>
+                {% else %}
+                <div class="status-label status-label-error">
+                    <span class="status-dot" aria-hidden="true"></span>
+                    Status unavailable
+                </div>
+                <h2 id="status-title">We couldn’t check the assessment</h2>
+                <p class="status-copy">
+                    Please try again. If the problem continues, contact your exam administrator.
+                </p>
+                <a class="secondary-button" href="{{ url_for('candidate_assessment') }}">Try again</a>
+                {% endif %}
+            </section>
+        </main>
+
+        <footer class="site-footer">
+            <span>ExamGuard AI</span>
+            <span>Availability is based on the normal exam question bank.</span>
+        </footer>
+    </div>
+</body>
+</html>
